@@ -1081,9 +1081,7 @@ function renderAll(){
 
 function renderSelectsOptions(){
   const selVarCat = document.getElementById('newVarCategoria');
-  selVarCat.innerHTML = state.categories.map(c=>`<option value="${esc(c)}">${esc(c)}</option>`).join('');
-  const selFijoGrupo = document.getElementById('newFijoGrupo');
-  selFijoGrupo.innerHTML = state.groups.map(g=>`<option value="${esc(g)}">${esc(g)}</option>`).join('');
+  if(selVarCat) selVarCat.innerHTML = state.categories.map(c=>`<option value="${esc(c)}">${esc(c)}</option>`).join('');
   const tarjFechaInput = document.getElementById('newTarjFecha');
   if(tarjFechaInput && !tarjFechaInput.value){
     const today = new Date();
