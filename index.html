@@ -1,3 +1,4 @@
+
 <!DOCTYPE html>
 <html lang="es">
 <head>
@@ -377,16 +378,62 @@ footer{
 @media(min-width:600px){
   .summary-grid{ grid-template-columns:repeat(4,1fr); }
 }
+
+/* ===== Login ===== */
+#loginScreen{
+  position:fixed; inset:0; z-index:100;
+  background:var(--paper-alt);
+  display:flex; align-items:center; justify-content:center;
+  padding:24px;
+}
+.login-box{
+  background:var(--paper);
+  border:1px solid var(--line);
+  border-radius:14px;
+  padding:36px 28px;
+  max-width:340px; width:100%;
+  text-align:center;
+  box-shadow:0 8px 40px rgba(30,61,52,0.12);
+}
+.login-box h1{ font-family:'Archivo Narrow',sans-serif; font-size:1.6rem; text-transform:uppercase; letter-spacing:2px; margin:0 0 4px; }
+.login-box h1 span{ color:var(--gold); }
+.login-box p{ color:var(--ink-soft); font-size:0.85rem; margin:0 0 24px; }
+.login-box input[type=password]{
+  width:100%; font-size:1rem; padding:10px 14px;
+  border:1.5px solid var(--line); border-radius:8px;
+  background:#fff; color:var(--ink);
+  text-align:center; letter-spacing:3px;
+  margin-bottom:12px;
+}
+.login-box input[type=password]:focus{ outline:2px solid var(--gold); }
+.login-box .addbtn{ width:100%; padding:12px; font-size:0.9rem; }
+.login-error{ color:var(--red); font-size:0.82rem; margin-top:8px; min-height:18px; }
+.login-box .version{ color:var(--ink-soft); font-size:0.7rem; margin-top:18px; }
 </style>
 </head>
 <body>
+
+<!-- PANTALLA DE LOGIN -->
+<div id="loginScreen">
+  <div class="login-box">
+    <h1>Cuentas de <span>Casa</span></h1>
+    <p>Ingresá la contraseña para acceder</p>
+    <input type="password" id="loginInput" placeholder="••••••••" onkeydown="if(event.key==='Enter') tryLogin()">
+    <button class="addbtn" onclick="tryLogin()">Entrar</button>
+    <div class="login-error" id="loginError"></div>
+    <div class="version">v1.0 · 2026</div>
+  </div>
+</div>
 <div class="app">
   <header>
     <div class="title-row">
       <h1>Cuentas de <span>Casa</span></h1>
-      <div class="period-select">
-        <select id="selMonth"></select>
-        <select id="selYear"></select>
+      <div style="display:flex;align-items:center;gap:8px">
+        <div class="period-select">
+          <select id="selMonth"></select>
+          <select id="selYear"></select>
+        </div>
+        <button onclick="logout()" title="Cerrar sesión" style="border:1px solid var(--line);background:transparent;border-radius:6px;padding:5px 8px;cursor:pointer;font-size:0.8rem;color:var(--ink-soft)">🔒</button>
       </div>
     </div>
     <div class="balance-line">
@@ -550,6 +597,17 @@ footer{
       </div>
 
       <div class="card">
+        <h2>Contraseña de acceso</h2>
+        <p class="empty" style="margin-top:-4px">Cambiá la contraseña para entrar a la app. La contraseña se guarda en este dispositivo.</p>
+        <div class="addform">
+          <input type="password" id="pwdActual" placeholder="Contraseña actual" style="flex:1 1 160px">
+          <input type="password" id="pwdNueva" placeholder="Contraseña nueva" style="flex:1 1 160px">
+          <button class="addbtn" onclick="changePassword()">Cambiar</button>
+        </div>
+        <p class="empty" id="pwdStatus" style="margin-top:6px"></p>
+      </div>
+
+      <div class="card">
         <h2>Borrar todo</h2>
         <p class="empty" style="margin-top:-4px">Esto elimina todos los meses, categorías y grupos guardados en este dispositivo. No se puede deshacer.</p>
         <button class="addbtn secondary" style="color:var(--red);border-color:var(--red)" onclick="resetAll()">Borrar todos los datos</button>
@@ -566,6 +624,68 @@ footer{
 </div>
 
 <script>
+/* ===== Login ===== */
+const DEFAULT_PASSWORD = 'casa2026';
+
+function hashSimple(str){
+  let h = 0x811c9dc5;
+  for(let i=0;i<str.length;i++){ h ^= str.charCodeAt(i); h = Math.imul(h, 0x01000193); }
+  return (h >>> 0).toString(16);
+}
+function getStoredHash(){
+  return localStorage.getItem('cuentas-pwd') || hashSimple(DEFAULT_PASSWORD);
+}
+function isLoggedIn(){
+  return sessionStorage.getItem('cuentas-session') === 'ok';
+}
+function tryLogin(){
+  const val = document.getElementById('loginInput').value;
+  if(hashSimple(val) === getStoredHash()){
+    sessionStorage.setItem('cuentas-session','ok');
+    document.getElementById('loginScreen').style.display = 'none';
+    bootApp();
+  }else{
+    document.getElementById('loginError').textContent = 'Contraseña incorrecta.';
+    document.getElementById('loginInput').value = '';
+    document.getElementById('loginInput').focus();
+  }
+}
+function changePassword(){
+  const actual = document.getElementById('pwdActual').value;
+  const nueva = document.getElementById('pwdNueva').value.trim();
+  const status = document.getElementById('pwdStatus');
+  if(hashSimple(actual) !== getStoredHash()){ status.textContent = '⚠️ La contraseña actual es incorrecta.'; return; }
+  if(nueva.length < 4){ status.textContent = '⚠️ La contraseña nueva tiene que tener al menos 4 caracteres.'; return; }
+  localStorage.setItem('cuentas-pwd', hashSimple(nueva));
+  document.getElementById('pwdActual').value = '';
+  document.getElementById('pwdNueva').value = '';
+  status.textContent = '✅ Contraseña cambiada correctamente.';
+}
+function logout(){
+  sessionStorage.removeItem('cuentas-session');
+  location.reload();
+}
+
+/* ===== Arranque ===== */
+if(isLoggedIn()){
+  document.getElementById('loginScreen').style.display = 'none';
+  document.addEventListener('DOMContentLoaded', bootApp);
+}else{
+  document.addEventListener('DOMContentLoaded', ()=>{
+    document.getElementById('loginInput').focus();
+  });
+}
+
+async function bootApp(){
+  initSelectors();
+  renderApiKeyStatus();
+  renderSyncStatus();
+  await loadData();
+  renderAll();
+  if('serviceWorker' in navigator){
+    navigator.serviceWorker.register('sw.js').catch(()=>{});
+  }
+}
 const MONTHS = ['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'];
 const PALETTE = ['#1E6F5C','#C99A3B','#B6402F','#3D6B8A','#7A8450','#8C5E8C','#C97A4A','#5C6B73','#A6763F','#4F8C7A'];
 
@@ -1380,14 +1500,7 @@ function removeGrupo(name){
   saveData(); renderAll();
 }
 
-/* ===== Boot ===== */
-(async function(){
-  initSelectors();
-  renderApiKeyStatus();
-  renderSyncStatus();
-  await loadData();
-  renderAll();
-})();
+/* fin */
 
 if('serviceWorker' in navigator){
   window.addEventListener('load', ()=>{
