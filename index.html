@@ -515,20 +515,32 @@ footer{
       </div>
     </section>
 
-    <!-- CUOTAS -->
+    <!-- TARJETAS -->
     <section class="tabpanel" id="tab-cuotas">
-      <div class="card">
-        <h2>Cuotas de tarjetas <span class="tot" id="totCuotas">$ 0</span></h2>
-        <div id="listCuotas"></div>
-        <div class="addform">
-          <input type="text" id="newCuotaDesc" placeholder="Descripción (ej. Heladera AFIP)">
-          <input type="number" id="newCuotaMonto" placeholder="Monto cuota" step="1">
-          <input type="number" id="newCuotaActual" placeholder="Cuota Nº" step="1" style="flex:0 0 80px">
-          <input type="number" id="newCuotaFinal" placeholder="Cuota final" step="1" style="flex:0 0 90px">
-          <button class="addbtn" onclick="addCuota()">Agregar</button>
-        </div>
-        <p class="empty" style="margin-top:8px">Cuando pase el mes, tocá "+1 cuota" para avanzar el contador. Cuando la cuota actual supera la final, deja de contarse en el total.</p>
+
+      <div style="display:flex;justify-content:space-between;align-items:center;padding:4px 2px 10px">
+        <span style="font-family:'Archivo Narrow',sans-serif;font-weight:700;font-size:0.85rem;text-transform:uppercase;letter-spacing:1.5px;color:var(--ink-soft)">Total tarjetas este mes</span>
+        <span class="mono" id="totCuotasHeader" style="font-size:1.1rem;font-weight:700"></span>
       </div>
+      <div id="tarjetasResumen"></div>
+
+      <!-- Gastos del mes de cada tarjeta -->
+      <div id="tarjetasDetalle"></div>
+
+      <!-- Nuevo gasto con tarjeta -->
+      <div class="card">
+        <h2>Cargar gasto con tarjeta</h2>
+        <div class="addform">
+          <input type="date" id="newTarjFecha">
+          <input type="text" id="newTarjDesc" placeholder="Descripción (ej. Heladera Samsung)">
+          <input type="number" id="newTarjMonto" placeholder="Monto total" step="1">
+          <select id="newTarjTarjeta"></select>
+          <input type="number" id="newTarjCuotas" placeholder="Cuotas" step="1" min="1" value="1" style="flex:0 0 70px" title="Cantidad de cuotas">
+          <button class="addbtn" onclick="addGastoTarjeta()">Agregar</button>
+        </div>
+        <p class="empty" style="margin-top:8px">Si comprás en cuotas, la app distribuye el monto automáticamente en los meses siguientes. Podés poner 1 cuota para gastos al contado.</p>
+      </div>
+
     </section>
 
     <!-- CATEGORIAS -->
@@ -541,6 +553,16 @@ footer{
           <button class="addbtn" onclick="addCategoria()">Agregar</button>
         </div>
       </div>
+      <div class="card">
+        <h2>Mis tarjetas</h2>
+        <p class="empty" style="margin-top:-4px;margin-bottom:8px">Definí tus tarjetas de crédito/débito. Después podés asignar gastos a cada una.</p>
+        <div class="chiplist" id="chipTarjetas"></div>
+        <div class="addform">
+          <input type="text" id="newTarjetaNombre" placeholder="Nombre (ej. Visa Hipotecario)">
+          <button class="addbtn" onclick="addTarjeta()">Agregar</button>
+        </div>
+      </div>
+
       <div class="card">
         <h2>Grupos de gastos fijos</h2>
         <p class="empty" style="margin-top:-4px;margin-bottom:8px">Por ejemplo: Juan, Chicos, Hogar — sirven para saber a quién corresponde cada gasto fijo.</p>
@@ -823,6 +845,14 @@ async function loadData(){
   if(!state.months['2026-06']){
     state.months['2026-06'] = SEED_JUNIO_2026;
   }
+  // Tarjetas iniciales
+  if(!state.tarjetas){
+    state.tarjetas = [
+      {id:'t1', nombre:'Visa Hipotecario'},
+      {id:'t2', nombre:'Naranja'}
+    ];
+  }
+  if(!state.gastosTarjeta) state.gastosTarjeta = [];
 
   saveData();
 }
@@ -1045,7 +1075,7 @@ function renderAll(){
   renderIngresos();
   renderFijos();
   renderVariables();
-  renderCuotas();
+  renderTarjetas();
   renderCategorias();
   renderBalance();
 }
@@ -1055,6 +1085,11 @@ function renderSelectsOptions(){
   selVarCat.innerHTML = state.categories.map(c=>`<option value="${esc(c)}">${esc(c)}</option>`).join('');
   const selFijoGrupo = document.getElementById('newFijoGrupo');
   selFijoGrupo.innerHTML = state.groups.map(g=>`<option value="${esc(g)}">${esc(g)}</option>`).join('');
+  const tarjFechaInput = document.getElementById('newTarjFecha');
+  if(tarjFechaInput && !tarjFechaInput.value){
+    const today = new Date();
+    tarjFechaInput.value = today.toISOString().slice(0,10);
+  }
   const fechaInput = document.getElementById('newVarFecha');
   if(!fechaInput.value){
     const key = monthKey();
@@ -1070,11 +1105,12 @@ function esc(s){
 
 function calcTotals(){
   const m = getMonth();
+  const key = monthKey();
   const ingresos = m.ingresos.reduce((s,i)=>s+(Number(i.monto)||0),0);
   const fijos = m.fijos.reduce((s,f)=>s+(Number(f.monto)||0),0);
   const fijosResta = m.fijos.reduce((s,f)=>s+Math.max((Number(f.monto)||0)-(Number(f.pagado)||0),0),0);
   const variables = m.variables.reduce((s,v)=>s+(Number(v.monto)||0),0);
-  const cuotas = m.cuotas.filter(c=>Number(c.actual)<=Number(c.final)).reduce((s,c)=>s+(Number(c.monto)||0),0);
+  const cuotas = totTarjetasMes(key);
   const balance = ingresos - fijos - variables - cuotas;
   return {ingresos, fijos, fijosResta, variables, cuotas, balance};
 }
@@ -1186,6 +1222,40 @@ function deleteIngreso(id){
   saveData(); renderAll();
 }
 
+/* ===== Ordenamiento ===== */
+const sortState = {
+  fijos:    { field: 'orden', dir: 'asc' },
+  variables: { field: 'fecha', dir: 'asc' }
+};
+
+function sortedList(arr, field, dir){
+  return [...arr].sort((a,b)=>{
+    let va, vb;
+    if(field === 'monto')       { va = Number(a.monto)||0; vb = Number(b.monto)||0; }
+    else if(field === 'descripcion'){ va = (a.descripcion||'').toLowerCase(); vb = (b.descripcion||'').toLowerCase(); }
+    else if(field === 'fecha')  { va = a.fecha||''; vb = b.fecha||''; }
+    else                        { return 0; }
+    if(va < vb) return dir==='asc' ? -1 : 1;
+    if(va > vb) return dir==='asc' ? 1 : -1;
+    return 0;
+  });
+}
+
+function setSort(section, field){
+  const s = sortState[section];
+  if(s.field === field) s.dir = s.dir==='asc' ? 'desc' : 'asc';
+  else { s.field = field; s.dir = field==='monto' ? 'desc' : 'asc'; }
+  if(section==='fijos') renderFijos();
+  else renderVariables();
+}
+
+function sortBtn(section, field, label){
+  const s = sortState[section];
+  const active = s.field === field;
+  const arrow = active ? (s.dir==='asc' ? ' ↑' : ' ↓') : '';
+  return `<button onclick="setSort('${section}','${field}')" style="font-family:'Archivo Narrow',sans-serif;font-size:0.7rem;font-weight:600;text-transform:uppercase;letter-spacing:0.5px;border:1px solid var(--line);background:${active?'var(--ink)':'transparent'};color:${active?'var(--paper)':'var(--ink-soft)'};border-radius:5px;padding:3px 7px;cursor:pointer">${label}${arrow}</button>`;
+}
+
 /* ===== Gastos Fijos ===== */
 function estadoFijo(f){
   const monto = Number(f.monto)||0, pagado = Number(f.pagado)||0;
@@ -1199,10 +1269,21 @@ function estadoClass(estado){
 function renderFijos(){
   const m = getMonth();
   const list = document.getElementById('listFijos');
+  const s = sortState.fijos;
+  const items = s.field === 'orden' ? m.fijos : sortedList(m.fijos, s.field, s.dir);
+
+  // barra de ordenamiento
+  const sortBar = `<div style="display:flex;gap:5px;align-items:center;margin-bottom:8px;flex-wrap:wrap">
+    <span style="font-size:0.7rem;color:var(--ink-soft);text-transform:uppercase;letter-spacing:0.5px">Ordenar:</span>
+    ${sortBtn('fijos','orden','Carga')}
+    ${sortBtn('fijos','descripcion','Nombre')}
+    ${sortBtn('fijos','monto','Monto')}
+  </div>`;
+
   if(m.fijos.length===0){
-    list.innerHTML = '<p class="empty">No agregaste gastos fijos este mes.</p>';
+    list.innerHTML = sortBar + '<p class="empty">No agregaste gastos fijos este mes.</p>';
   }else{
-    list.innerHTML = m.fijos.map(f=>{
+    list.innerHTML = sortBar + items.map(f=>{
       const estado = estadoFijo(f);
       return `<div class="row" style="flex-wrap:wrap">
         <span class="tag" style="background:${colorFor(f.grupo)}">${esc(f.grupo)}</span>
@@ -1246,11 +1327,20 @@ function deleteFijo(id){
 function renderVariables(){
   const m = getMonth();
   const list = document.getElementById('listVariables');
+  const s = sortState.variables;
+  const items = sortedList(m.variables, s.field, s.dir);
+
+  const sortBar = `<div style="display:flex;gap:5px;align-items:center;margin-bottom:8px;flex-wrap:wrap">
+    <span style="font-size:0.7rem;color:var(--ink-soft);text-transform:uppercase;letter-spacing:0.5px">Ordenar:</span>
+    ${sortBtn('variables','fecha','Fecha')}
+    ${sortBtn('variables','descripcion','Nombre')}
+    ${sortBtn('variables','monto','Monto')}
+  </div>`;
+
   if(m.variables.length===0){
-    list.innerHTML = '<p class="empty">No agregaste gastos variables este mes.</p>';
+    list.innerHTML = sortBar + '<p class="empty">No agregaste gastos variables este mes.</p>';
   }else{
-    const sorted = [...m.variables].sort((a,b)=>(a.fecha||'').localeCompare(b.fecha||''));
-    list.innerHTML = sorted.map(v=>`
+    list.innerHTML = sortBar + items.map(v=>`
       <div class="row" style="flex-wrap:wrap">
         <input type="date" value="${v.fecha||''}" oninput="updateVariable('${v.id}','fecha',this.value)" style="flex:0 0 130px;font-family:'JetBrains Mono',monospace;font-size:0.8rem">
         <span class="desc">
@@ -1411,62 +1501,189 @@ function confirmarFactura(){
   document.getElementById('tab-variables').classList.add('active');
 }
 
-/* ===== Cuotas ===== */
-function renderCuotas(){
-  const m = getMonth();
-  const list = document.getElementById('listCuotas');
-  if(m.cuotas.length===0){
-    list.innerHTML = '<p class="empty">No tenés cuotas de tarjeta registradas este mes.</p>';
+/* ===== TARJETAS ===== */
+
+// Las tarjetas se definen en state.tarjetas (array de {id, nombre})
+// Los gastos con tarjeta se guardan en state.gastosTarjeta (array global, no por mes):
+// { id, tarjetaId, descripcion, montoTotal, cuotas, fechaCompra (YYYY-MM), categoria }
+// El monto por cuota = montoTotal / cuotas, se aplica en fechaCompra + 0,1,2... meses
+
+function getTarjetas(){ return state.tarjetas || []; }
+function getGastosTarjeta(){ return state.gastosTarjeta || []; }
+
+function cuotasMesKey(gasto, offset){
+  // devuelve la YYYY-MM del mes de la cuota offset (0=primera)
+  const [y, m] = gasto.fechaCompra.split('-').map(Number);
+  const d = new Date(y, m-1+offset, 1);
+  return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`;
+}
+
+function gastosTarjetaDelMes(key){
+  // devuelve [{gasto, cuotaNum, monto, tarjeta}] para el mes key
+  const result = [];
+  getGastosTarjeta().forEach(g=>{
+    const n = Number(g.cuotas)||1;
+    const montoCuota = (Number(g.montoTotal)||0) / n;
+    for(let i=0;i<n;i++){
+      if(cuotasMesKey(g,i) === key){
+        const tarjeta = getTarjetas().find(t=>t.id===g.tarjetaId);
+        result.push({gasto:g, cuotaNum:i+1, monto:montoCuota, tarjeta});
+        break;
+      }
+    }
+  });
+  return result;
+}
+
+function totTarjetasMes(key){
+  return gastosTarjetaDelMes(key).reduce((s,r)=>s+r.monto, 0);
+}
+
+function renderTarjetas(){
+  const key = monthKey();
+  const items = gastosTarjetaDelMes(key);
+  const tarjetas = getTarjetas();
+
+  // Resumen por tarjeta
+  const resumenEl = document.getElementById('tarjetasResumen');
+  if(tarjetas.length===0){
+    resumenEl.innerHTML = `<div class="card"><p class="empty">Todavía no definiste ninguna tarjeta. Andá a "Categorías" para agregarlas.</p></div>`;
   }else{
-    list.innerHTML = m.cuotas.map(c=>{
-      const activo = Number(c.actual) <= Number(c.final);
-      const pct = c.final>0 ? Math.min(100, Math.round(Number(c.actual)/Number(c.final)*100)) : 0;
-      return `<div class="row" style="flex-wrap:wrap;align-items:flex-start">
-        <span class="desc">
-          <input type="text" value="${esc(c.descripcion)}" oninput="updateCuota('${c.id}','descripcion',this.value)">
-          <div class="progress"><div style="width:${pct}%"></div></div>
-        </span>
-        <span class="mono" style="${activo?'':'color:var(--ink-soft);text-decoration:line-through'}">${formatMoney(c.monto)}</span>
-        <span class="mono" style="font-size:0.8rem">${c.actual}/${c.final}</span>
-        ${activo ? `<button class="addbtn secondary" style="font-size:0.7rem;padding:5px 8px" onclick="avanzarCuota('${c.id}')">+1 cuota</button>` : `<span class="badge badge-paid">Terminada</span>`}
-        <button class="iconbtn" title="Eliminar" onclick="deleteCuota('${c.id}')">✕</button>
+    resumenEl.innerHTML = tarjetas.map(t=>{
+      const gastosTarjeta = items.filter(r=>r.tarjeta?.id===t.id);
+      const tot = gastosTarjeta.reduce((s,r)=>s+r.monto,0);
+      return `<div class="card">
+        <h2 style="color:${colorFor(t.nombre)}">${esc(t.nombre)} <span class="tot">${formatMoney(tot)}</span></h2>
+        ${gastosTarjeta.length===0
+          ? '<p class="empty">Sin gastos este mes.</p>'
+          : gastosTarjeta.map(r=>{
+              const n = Number(r.gasto.cuotas)||1;
+              const pct = Math.round(r.cuotaNum/n*100);
+              return `<div class="row" style="flex-wrap:wrap">
+                <span class="desc">
+                  ${esc(r.gasto.descripcion)}
+                  ${n>1?`<div class="progress"><div style="width:${pct}%"></div></div>`:''}
+                </span>
+                ${n>1 ? `<span class="mono" style="font-size:0.78rem;color:var(--ink-soft)">${r.cuotaNum}/${n}</span>` : ''}
+                <span class="mono">${formatMoney(r.monto)}</span>
+                <button class="iconbtn" title="Eliminar gasto" onclick="deleteGastoTarjeta('${r.gasto.id}')">✕</button>
+              </div>`;
+            }).join('')
+        }
       </div>`;
     }).join('');
   }
-  const tot = m.cuotas.filter(c=>Number(c.actual)<=Number(c.final)).reduce((s,c)=>s+(Number(c.monto)||0),0);
-  document.getElementById('totCuotas').textContent = formatMoney(tot);
+
+  // Próximos meses (cuotas futuras)
+  const futuras = [];
+  getGastosTarjeta().forEach(g=>{
+    const n = Number(g.cuotas)||1;
+    for(let i=0;i<n;i++){
+      const mk = cuotasMesKey(g,i);
+      if(mk > key){
+        const tarjeta = getTarjetas().find(t=>t.id===g.tarjetaId);
+        futuras.push({mk, gasto:g, cuotaNum:i+1, monto:(Number(g.montoTotal)||0)/n, tarjeta});
+      }
+    }
+  });
+
+  const detalleEl = document.getElementById('tarjetasDetalle');
+  if(futuras.length>0){
+    // agrupar por mes futuro
+    const porMes = {};
+    futuras.forEach(f=>{ if(!porMes[f.mk]) porMes[f.mk]=[]; porMes[f.mk].push(f); });
+    const mesesOrdenados = Object.keys(porMes).sort();
+    detalleEl.innerHTML = `<div class="card">
+      <h2>Cuotas en meses siguientes</h2>
+      ${mesesOrdenados.map(mk=>{
+        const [y,m] = mk.split('-');
+        const label = `${MONTHS[Number(m)-1]} ${y}`;
+        const tot = porMes[mk].reduce((s,f)=>s+f.monto,0);
+        return `<div style="margin-bottom:10px">
+          <div style="font-family:'Archivo Narrow',sans-serif;font-weight:700;font-size:0.85rem;text-transform:uppercase;letter-spacing:1px;color:var(--ink-soft);padding:4px 0;border-bottom:1px dashed var(--line);display:flex;justify-content:space-between">
+            <span>${label}</span><span style="font-family:'JetBrains Mono',monospace">${formatMoney(tot)}</span>
+          </div>
+          ${porMes[mk].map(f=>`
+            <div class="row">
+              <span class="tag" style="background:${colorFor(f.tarjeta?.nombre||'')}">${esc(f.tarjeta?.nombre||'?')}</span>
+              <span class="desc">${esc(f.gasto.descripcion)}</span>
+              <span class="mono" style="font-size:0.78rem;color:var(--ink-soft)">${f.cuotaNum}/${f.gasto.cuotas}</span>
+              <span class="mono">${formatMoney(f.monto)}</span>
+            </div>`).join('')}
+        </div>`;
+      }).join('')}
+    </div>`;
+  }else{
+    detalleEl.innerHTML = '';
+  }
+
+  // Actualizar select de tarjeta en el form
+  const sel = document.getElementById('newTarjTarjeta');
+  if(sel){
+    sel.innerHTML = tarjetas.length===0
+      ? '<option value="">— sin tarjetas —</option>'
+      : tarjetas.map(t=>`<option value="${t.id}">${esc(t.nombre)}</option>`).join('');
+  }
+
+  // Total en header
+  document.getElementById('totCuotasHeader').textContent = formatMoney(totTarjetasMes(key));
 }
-function addCuota(){
-  const desc = document.getElementById('newCuotaDesc').value.trim();
-  const monto = document.getElementById('newCuotaMonto').value;
-  const actual = document.getElementById('newCuotaActual').value || 1;
-  const final = document.getElementById('newCuotaFinal').value || 1;
-  if(!desc) return;
-  getMonth().cuotas.push({id:uid(), descripcion:desc, monto:Number(monto)||0, actual:Number(actual), final:Number(final)});
-  document.getElementById('newCuotaDesc').value='';
-  document.getElementById('newCuotaMonto').value='';
-  document.getElementById('newCuotaActual').value='';
-  document.getElementById('newCuotaFinal').value='';
+
+function addGastoTarjeta(){
+  const fecha = document.getElementById('newTarjFecha').value;
+  const desc = document.getElementById('newTarjDesc').value.trim();
+  const montoTotal = Number(document.getElementById('newTarjMonto').value)||0;
+  const tarjetaId = document.getElementById('newTarjTarjeta').value;
+  const cuotas = Math.max(1, Number(document.getElementById('newTarjCuotas').value)||1);
+  if(!desc || !tarjetaId || !fecha){ alert('Completá fecha, descripción y tarjeta.'); return; }
+
+  // fechaCompra = YYYY-MM del mes seleccionado en el selector global
+  // pero si la fecha de compra es del mes actual la tomamos tal cual
+  const fechaCompra = fecha.slice(0,7); // YYYY-MM
+
+  if(!state.gastosTarjeta) state.gastosTarjeta = [];
+  state.gastosTarjeta.push({
+    id: uid(),
+    tarjetaId,
+    descripcion: desc,
+    montoTotal,
+    cuotas,
+    fechaCompra,
+    categoria: 'Tarjeta'
+  });
+
+  document.getElementById('newTarjDesc').value='';
+  document.getElementById('newTarjMonto').value='';
+  document.getElementById('newTarjCuotas').value='1';
   saveData(); renderAll();
 }
-function updateCuota(id, field, val){
-  const item = getMonth().cuotas.find(c=>c.id===id);
-  if(!item) return;
-  item[field] = field==='descripcion' ? val : Number(val)||0;
-  saveData();
-  renderCuotas(); renderBalance(); renderDashboard();
-}
-function avanzarCuota(id){
-  const item = getMonth().cuotas.find(c=>c.id===id);
-  if(!item) return;
-  item.actual = Number(item.actual)+1;
+
+function deleteGastoTarjeta(id){
+  if(!confirm('¿Eliminás este gasto y todas sus cuotas futuras?')) return;
+  state.gastosTarjeta = (state.gastosTarjeta||[]).filter(g=>g.id!==id);
   saveData(); renderAll();
 }
-function deleteCuota(id){
-  const m = getMonth();
-  m.cuotas = m.cuotas.filter(c=>c.id!==id);
+
+function addTarjeta(){
+  const nombre = document.getElementById('newTarjetaNombre').value.trim();
+  if(!nombre) return;
+  if(!state.tarjetas) state.tarjetas=[];
+  if(state.tarjetas.find(t=>t.nombre.toLowerCase()===nombre.toLowerCase())) return;
+  state.tarjetas.push({id:uid(), nombre});
+  document.getElementById('newTarjetaNombre').value='';
   saveData(); renderAll();
 }
+
+function removeTarjeta(id){
+  const tiene = (state.gastosTarjeta||[]).some(g=>g.tarjetaId===id);
+  if(tiene && !confirm('Esta tarjeta tiene gastos cargados. ¿Eliminás la tarjeta y todos sus gastos?')) return;
+  state.tarjetas = (state.tarjetas||[]).filter(t=>t.id!==id);
+  if(tiene) state.gastosTarjeta = (state.gastosTarjeta||[]).filter(g=>g.tarjetaId!==id);
+  saveData(); renderAll();
+}
+
+// Compatibilidad con calcTotals — reemplaza totTarjetas
+
 
 /* ===== Categorías ===== */
 function renderCategorias(){
@@ -1476,6 +1693,9 @@ function renderCategorias(){
   document.getElementById('chipGrupos').innerHTML = state.groups.map(g=>`
     <span class="chip" style="background:${colorFor(g)}">${esc(g)}<button onclick="removeGrupo('${esc(g)}')">✕</button></span>
   `).join('');
+  document.getElementById('chipTarjetas').innerHTML = getTarjetas().map(t=>`
+    <span class="chip" style="background:${colorFor(t.nombre)}">${esc(t.nombre)}<button onclick="removeTarjeta('${t.id}')">✕</button></span>
+  `).join('') || '<p class="empty" style="margin:0">Todavía no agregaste tarjetas.</p>';
 }
 function addCategoria(){
   const val = document.getElementById('newCategoria').value.trim();
