@@ -473,7 +473,8 @@ footer{
         <div id="listIngresos"></div>
         <div class="addform">
           <input type="text" id="newIngresoDesc" placeholder="Descripción (ej. Sueldo Juan)">
-          <input type="number" id="newIngresoMonto" placeholder="Monto" step="1">
+          <input type="text" inputmode="numeric" id="newIngresoMonto" placeholder="Monto" 
+            onfocus="onMontoFocus(this)" onblur="onMontoBlur(this)">
           <button class="addbtn" onclick="addIngreso()">Agregar</button>
         </div>
       </div>
@@ -486,7 +487,9 @@ footer{
         <div id="listFijos"></div>
         <div class="addform">
           <input type="text" id="newFijoDesc" placeholder="Descripción (ej. Expensas)">
-          <input type="number" id="newFijoMonto" placeholder="Monto" step="1">
+          <input type="text" inputmode="numeric" id="newFijoMonto" placeholder="Monto"
+            onfocus="onMontoFocus(this)" onblur="onMontoBlur(this)">
+          <input type="date" id="newFijoVence" title="Fecha de vencimiento (opcional)" style="flex:0 0 140px;font-family:'JetBrains Mono',monospace;font-size:0.8rem">
           <button class="addbtn" onclick="addFijo()">Agregar</button>
         </div>
         <p class="empty" style="margin-top:8px">Tip: tocá el monto "pagado" para marcar cuánto ya abonaste de cada gasto. El estado se actualiza solo.</p>
@@ -507,7 +510,8 @@ footer{
         <div class="addform">
           <input type="date" id="newVarFecha">
           <input type="text" id="newVarDesc" placeholder="Descripción">
-          <input type="number" id="newVarMonto" placeholder="Monto" step="1">
+          <input type="text" inputmode="numeric" id="newVarMonto" placeholder="Monto"
+            onfocus="onMontoFocus(this)" onblur="onMontoBlur(this)">
           <select id="newVarCategoria"></select>
           <button class="addbtn" onclick="addVariable()">Agregar</button>
         </div>
@@ -532,7 +536,8 @@ footer{
         <div class="addform">
           <input type="date" id="newTarjFecha">
           <input type="text" id="newTarjDesc" placeholder="Descripción (ej. Heladera Samsung)">
-          <input type="number" id="newTarjMonto" placeholder="Monto total" step="1">
+          <input type="text" inputmode="numeric" id="newTarjMonto" placeholder="Monto total"
+            onfocus="onMontoFocus(this)" onblur="onMontoBlur(this)">
           <select id="newTarjTarjeta"></select>
           <input type="number" id="newTarjCuotas" placeholder="Cuotas" step="1" min="1" value="1" style="flex:0 0 70px" title="Cantidad de cuotas">
           <button class="addbtn" onclick="addGastoTarjeta()">Agregar</button>
@@ -573,6 +578,22 @@ footer{
       </div>
     <!-- AJUSTES -->
     <section class="tabpanel" id="tab-ajustes">
+      <div class="card">
+        <h2>🔔 Notificaciones de vencimientos</h2>
+        <p class="empty" style="margin-top:-4px">La app te avisa antes de que venzan los gastos fijos. Necesitás dar permiso de notificaciones al navegador.</p>
+        <div class="addform" style="align-items:center">
+          <label style="font-size:0.88rem;color:var(--ink)">Avisar</label>
+          <input type="number" id="notifDias" min="1" max="30" value="3" style="flex:0 0 60px;text-align:center">
+          <label style="font-size:0.88rem;color:var(--ink)">días antes del vencimiento</label>
+        </div>
+        <div class="addform">
+          <button class="addbtn" onclick="saveNotifConfig()">Guardar</button>
+          <button class="addbtn secondary" onclick="pedirPermisoNotif()">Activar notificaciones</button>
+          <button class="addbtn secondary" onclick="testNotif()">Probar aviso</button>
+        </div>
+        <p class="empty" id="notifStatus" style="margin-top:6px"></p>
+      </div>
+
       <div class="card">
         <h2>Sincronizar entre dispositivos</h2>
         <p class="empty" style="margin-top:-4px">Conectá la app a una base de datos gratuita en Supabase para que el celular y la compu compartan los mismos datos automáticamente.</p>
@@ -701,8 +722,10 @@ async function bootApp(){
   initSelectors();
   renderApiKeyStatus();
   renderSyncStatus();
+  renderNotifStatus();
   await loadData();
   renderAll();
+  programarNotificaciones();
   if('serviceWorker' in navigator){
     navigator.serviceWorker.register('sw.js').catch(()=>{});
   }
@@ -732,6 +755,30 @@ function colorFor(name){
 function formatMoney(n){
   n = Number(n)||0;
   return '$ ' + n.toLocaleString('es-AR', {maximumFractionDigits: n%1===0 ? 0 : 2});
+}
+
+// Formatea número con puntos para mostrar en input (ej: 1.500.000)
+function fmtInput(n){
+  n = Number(n)||0;
+  return n === 0 ? '' : Math.round(n).toLocaleString('es-AR');
+}
+
+// Parsea un string con puntos/comas a número (ej: "1.500.000" → 1500000)
+function parseInput(str){
+  if(!str) return 0;
+  // quita todo lo que no sea dígito ni coma decimal
+  return Number(str.replace(/\./g,'').replace(',','.')) || 0;
+}
+
+// Handler para inputs de monto: formatea al perder el foco
+function onMontoBlur(el){
+  const val = parseInput(el.value);
+  el.value = val > 0 ? Math.round(val).toLocaleString('es-AR') : '';
+}
+// Handler al enfocar: muestra solo el número sin puntos para editar fácil
+function onMontoFocus(el){
+  const val = parseInput(el.value);
+  el.value = val > 0 ? String(Math.round(val)) : '';
 }
 
 function monthKey(){
@@ -1224,9 +1271,11 @@ function renderIngresos(){
             ${formatMoney(monto)}
           </td>
           <td style="padding:9px 6px;white-space:nowrap;text-align:right">
-            <input type="number" value="${cobrado||0}" step="1" title="Monto cobrado"
-              oninput="updateIngreso('${i.id}','cobrado',this.value)"
-              style="font-family:'JetBrains Mono',monospace;font-size:0.85rem;width:90px;text-align:right;color:var(--ink-soft)">
+            <input type="text" inputmode="numeric" value="${fmtInput(cobrado)}" placeholder="0"
+              onfocus="onMontoFocus(this)"
+              onblur="onMontoBlur(this); updateIngreso('${i.id}','cobrado',parseInput(this.value))"
+              onkeydown="if(event.key==='Enter'){onMontoBlur(this);updateIngreso('${i.id}','cobrado',parseInput(this.value))}"
+              style="font-family:'JetBrains Mono',monospace;font-size:0.9rem;width:110px;text-align:right;color:var(--ink-soft);padding:4px 6px;border:1px solid var(--line);border-radius:6px;background:#fff">
           </td>
           <td style="padding:9px 4px;text-align:right">
             <button class="iconbtn" title="Eliminar" onclick="deleteIngreso('${i.id}')">✕</button>
@@ -1245,9 +1294,9 @@ function renderIngresos(){
 }
 function addIngreso(){
   const desc = document.getElementById('newIngresoDesc').value.trim();
-  const monto = document.getElementById('newIngresoMonto').value;
+  const monto = parseInput(document.getElementById('newIngresoMonto').value);
   if(!desc) return;
-  getMonth().ingresos.push({id:uid(), descripcion:desc, monto:Number(monto)||0});
+  getMonth().ingresos.push({id:uid(), descripcion:desc, monto, cobrado:0});
   document.getElementById('newIngresoDesc').value='';
   document.getElementById('newIngresoMonto').value='';
   saveData(); renderAll();
@@ -1338,20 +1387,28 @@ function renderFijos(){
           <td style="padding:9px 8px;font-size:1rem;font-weight:500">
             <input type="text" value="${esc(f.descripcion)}" oninput="updateFijo('${f.id}','descripcion',this.value)"
               style="font-size:1rem;font-weight:500;border:none;background:transparent;padding:0;width:100%;color:var(--ink)">
+            ${f.vence ? venceBadge(f.vence) : ''}
+          </td>
+          <td style="padding:9px 6px;white-space:nowrap;text-align:right">
+            <input type="date" value="${f.vence||''}" title="Fecha de vencimiento"
+              onchange="updateFijo('${f.id}','vence',this.value)"
+              style="font-family:'JetBrains Mono',monospace;font-size:0.75rem;border:1px solid var(--line);border-radius:5px;padding:3px 5px;color:var(--ink-soft);width:130px">
           </td>
           <td style="padding:9px 6px;white-space:nowrap;text-align:right;font-family:'JetBrains Mono',monospace;font-weight:700;font-size:0.95rem">
             ${formatMoney(monto)}
           </td>
           <td style="padding:9px 6px;white-space:nowrap;text-align:right">
-            <input type="number" value="${pagado||0}" step="1" title="Monto pagado"
-              oninput="updateFijo('${f.id}','pagado',this.value)"
-              style="font-family:'JetBrains Mono',monospace;font-size:0.85rem;width:90px;text-align:right;color:var(--ink-soft)">
+            <input type="text" inputmode="numeric" value="${fmtInput(pagado)}" placeholder="0"
+              onfocus="onMontoFocus(this)"
+              onblur="onMontoBlur(this); updateFijo('${f.id}','pagado',parseInput(this.value))"
+              onkeydown="if(event.key==='Enter'){onMontoBlur(this);updateFijo('${f.id}','pagado',parseInput(this.value))}"
+              style="font-family:'JetBrains Mono',monospace;font-size:0.9rem;width:110px;text-align:right;color:var(--ink-soft);padding:4px 6px;border:1px solid var(--line);border-radius:6px;background:#fff">
           </td>
           <td style="padding:9px 4px;text-align:right">
             <button class="iconbtn" title="Eliminar" onclick="deleteFijo('${f.id}')">✕</button>
           </td>
         </tr>
-        <tr><td colspan="4"><div style="height:1px;background:var(--line);opacity:0.5"></div></td></tr>`;
+        <tr><td colspan="5"><div style="height:1px;background:var(--line);opacity:0.5"></div></td></tr>`;
       }).join('') +
       `</table>
       <div style="display:flex;gap:8px;align-items:center;padding:6px 8px 0;font-size:0.72rem;color:var(--ink-soft)">
@@ -1365,11 +1422,13 @@ function renderFijos(){
 }
 function addFijo(){
   const desc = document.getElementById('newFijoDesc').value.trim();
-  const monto = document.getElementById('newFijoMonto').value;
+  const monto = parseInput(document.getElementById('newFijoMonto').value);
+  const vence = document.getElementById('newFijoVence').value || '';
   if(!desc) return;
-  getMonth().fijos.push({id:uid(), descripcion:desc, monto:Number(monto)||0, pagado:0});
+  getMonth().fijos.push({id:uid(), descripcion:desc, monto, pagado:0, vence});
   document.getElementById('newFijoDesc').value='';
   document.getElementById('newFijoMonto').value='';
+  document.getElementById('newFijoVence').value='';
   saveData(); renderAll();
 }
 function updateFijo(id, field, val){
@@ -1421,7 +1480,7 @@ function renderVariables(){
 function addVariable(prefill){
   const fecha = prefill?.fecha || document.getElementById('newVarFecha').value;
   const desc = (prefill?.descripcion || document.getElementById('newVarDesc').value).trim();
-  const monto = prefill?.monto ?? document.getElementById('newVarMonto').value;
+  const monto = prefill?.monto ?? parseInput(document.getElementById('newVarMonto').value);
   const categoria = prefill?.categoria || document.getElementById('newVarCategoria').value;
   if(!desc) return;
   getMonth().variables.push({id:uid(), fecha, descripcion:desc, monto:Number(monto)||0, categoria});
@@ -1694,7 +1753,7 @@ function renderTarjetas(){
 function addGastoTarjeta(){
   const fecha = document.getElementById('newTarjFecha').value;
   const desc = document.getElementById('newTarjDesc').value.trim();
-  const montoTotal = Number(document.getElementById('newTarjMonto').value)||0;
+  const montoTotal = parseInput(document.getElementById('newTarjMonto').value);
   const tarjetaId = document.getElementById('newTarjTarjeta').value;
   const cuotas = Math.max(1, Number(document.getElementById('newTarjCuotas').value)||1);
   if(!desc || !tarjetaId || !fecha){ alert('Completá fecha, descripción y tarjeta.'); return; }
@@ -1780,6 +1839,114 @@ function addGrupo(){
 function removeGrupo(name){
   state.groups = state.groups.filter(g=>g!==name);
   saveData(); renderAll();
+}
+
+/* ===== Vencimientos y Notificaciones ===== */
+
+function diasHastaVence(fechaStr){
+  if(!fechaStr) return null;
+  const hoy = new Date(); hoy.setHours(0,0,0,0);
+  const vence = new Date(fechaStr + 'T00:00:00');
+  return Math.round((vence - hoy) / 86400000);
+}
+
+function venceBadge(fechaStr){
+  const dias = diasHastaVence(fechaStr);
+  if(dias === null) return '';
+  const [y,m,d] = fechaStr.split('-');
+  const label = `${d}/${m}`;
+  if(dias < 0)  return `<span style="font-size:0.68rem;font-weight:700;padding:2px 6px;border-radius:4px;background:#B6402F;color:#fff;margin-left:6px">VENCIDO ${label}</span>`;
+  if(dias === 0) return `<span style="font-size:0.68rem;font-weight:700;padding:2px 6px;border-radius:4px;background:#B6402F;color:#fff;margin-left:6px">VENCE HOY</span>`;
+  if(dias <= 3)  return `<span style="font-size:0.68rem;font-weight:700;padding:2px 6px;border-radius:4px;background:#C99A3B;color:#fff;margin-left:6px">Vence en ${dias}d (${label})</span>`;
+  const notifDias = Number(localStorage.getItem('cuentas-notif-dias')||3);
+  if(dias <= notifDias) return `<span style="font-size:0.68rem;font-weight:600;padding:2px 6px;border-radius:4px;background:var(--gold-bg);color:var(--gold);margin-left:6px">Vence ${label}</span>`;
+  return `<span style="font-size:0.68rem;color:var(--ink-soft);margin-left:6px">${label}</span>`;
+}
+
+function getNotifDias(){ return Number(localStorage.getItem('cuentas-notif-dias')||3); }
+
+function saveNotifConfig(){
+  const dias = Number(document.getElementById('notifDias').value)||3;
+  localStorage.setItem('cuentas-notif-dias', dias);
+  renderNotifStatus();
+  programarNotificaciones();
+}
+
+async function pedirPermisoNotif(){
+  if(!('Notification' in window)){ alert('Tu navegador no soporta notificaciones push.'); return; }
+  const perm = await Notification.requestPermission();
+  renderNotifStatus();
+  if(perm === 'granted'){
+    programarNotificaciones();
+  }
+}
+
+function renderNotifStatus(){
+  const el = document.getElementById('notifStatus');
+  if(!el) return;
+  const dias = getNotifDias();
+  document.getElementById('notifDias').value = dias;
+  if(!('Notification' in window)){
+    el.textContent = '⚠️ Tu navegador no soporta notificaciones.';
+  } else if(Notification.permission === 'granted'){
+    el.textContent = `✅ Notificaciones activas — avisando ${dias} día${dias===1?'':'s'} antes del vencimiento.`;
+  } else if(Notification.permission === 'denied'){
+    el.textContent = '🚫 Notificaciones bloqueadas. Habilitarlas en la configuración del navegador.';
+  } else {
+    el.textContent = '⚠️ Permiso no otorgado. Tocá "Activar notificaciones".';
+  }
+}
+
+function testNotif(){
+  if(Notification.permission !== 'granted'){ alert('Primero activá las notificaciones.'); return; }
+  new Notification('Cuentas de Casa 🏠', {
+    body: 'Esta es una notificación de prueba. ¡Las alertas de vencimiento funcionan!',
+    icon: 'icon-192.png'
+  });
+}
+
+function programarNotificaciones(){
+  if(Notification.permission !== 'granted') return;
+  // Cancela el intervalo anterior si existe
+  if(window._notifInterval) clearInterval(window._notifInterval);
+
+  const chequear = () => {
+    const dias = getNotifDias();
+    const hoy = new Date(); hoy.setHours(0,0,0,0);
+    const lastNotif = localStorage.getItem('cuentas-last-notif-day') || '';
+    const hoyStr = hoy.toISOString().slice(0,10);
+    if(lastNotif === hoyStr) return; // ya avisamos hoy
+
+    const porVencer = [];
+    Object.entries(state.months||{}).forEach(([mk, m])=>{
+      (m.fijos||[]).forEach(f=>{
+        if(!f.vence) return;
+        const d = diasHastaVence(f.vence);
+        const pagado = Number(f.pagado)||0, monto = Number(f.monto)||0;
+        if(d !== null && d >= 0 && d <= dias && pagado < monto){
+          porVencer.push({desc: f.descripcion, dias: d, fecha: f.vence});
+        }
+      });
+    });
+
+    if(porVencer.length > 0){
+      localStorage.setItem('cuentas-last-notif-day', hoyStr);
+      porVencer.forEach(v => {
+        const msg = v.dias === 0
+          ? `${v.desc} vence HOY`
+          : `${v.desc} vence en ${v.dias} día${v.dias===1?'':'s'}`;
+        new Notification('⚠️ Cuentas de Casa — Vencimiento', {
+          body: msg,
+          icon: 'icon-192.png',
+          tag: 'vence-' + v.desc
+        });
+      });
+    }
+  };
+
+  chequear(); // chequear al abrir
+  // chequear cada hora
+  window._notifInterval = setInterval(chequear, 60 * 60 * 1000);
 }
 
 /* fin */
