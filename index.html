@@ -485,7 +485,6 @@ footer{
         <h2>Gastos fijos / a abonar <span class="tot" id="totFijos">$ 0</span></h2>
         <div id="listFijos"></div>
         <div class="addform">
-          <select id="newFijoGrupo"></select>
           <input type="text" id="newFijoDesc" placeholder="Descripción (ej. Expensas)">
           <input type="number" id="newFijoMonto" placeholder="Monto" step="1">
           <button class="addbtn" onclick="addFijo()">Agregar</button>
@@ -1107,12 +1106,13 @@ function calcTotals(){
   const m = getMonth();
   const key = monthKey();
   const ingresos = m.ingresos.reduce((s,i)=>s+(Number(i.monto)||0),0);
+  const ingresoCobrado = m.ingresos.reduce((s,i)=>s+(Number(i.cobrado)||0),0);
   const fijos = m.fijos.reduce((s,f)=>s+(Number(f.monto)||0),0);
   const fijosResta = m.fijos.reduce((s,f)=>s+Math.max((Number(f.monto)||0)-(Number(f.pagado)||0),0),0);
   const variables = m.variables.reduce((s,v)=>s+(Number(v.monto)||0),0);
   const cuotas = totTarjetasMes(key);
-  const balance = ingresos - fijos - variables - cuotas;
-  return {ingresos, fijos, fijosResta, variables, cuotas, balance};
+  const balance = ingresoCobrado - fijos - variables - cuotas;
+  return {ingresos, ingresoCobrado, fijos, fijosResta, variables, cuotas, balance};
 }
 
 function renderBalance(){
@@ -1125,10 +1125,10 @@ function renderBalance(){
 function renderDashboard(){
   const t = calcTotals();
   document.getElementById('summaryGrid').innerHTML = `
-    <div class="summary-card"><div class="label">Ingresos</div><div class="val" style="color:var(--green)">${formatMoney(t.ingresos)}</div></div>
+    <div class="summary-card"><div class="label">Cobrado</div><div class="val" style="color:var(--green)">${formatMoney(t.ingresoCobrado)}</div></div>
     <div class="summary-card"><div class="label">Gastos fijos</div><div class="val">${formatMoney(t.fijos)}</div></div>
     <div class="summary-card"><div class="label">Gastos variables</div><div class="val">${formatMoney(t.variables)}</div></div>
-    <div class="summary-card"><div class="label">Cuotas tarjetas</div><div class="val">${formatMoney(t.cuotas)}</div></div>
+    <div class="summary-card"><div class="label">Tarjetas</div><div class="val">${formatMoney(t.cuotas)}</div></div>
   `;
 
   // donut
@@ -1149,7 +1149,6 @@ function renderDashboard(){
     document.getElementById('dashPendientes').innerHTML = pend.map(f=>{
       const resta = (Number(f.monto)||0)-(Number(f.pagado)||0);
       return `<div class="row">
-        <span class="tag" style="background:${colorFor(f.grupo||'Hogar')}">${esc(f.grupo||'')}</span>
         <span class="desc">${esc(f.descripcion)}</span>
         <span class="mono" style="color:var(--red)">${formatMoney(resta)}</span>
       </div>`;
@@ -1185,20 +1184,66 @@ function buildDonut(data, total){
 function renderIngresos(){
   const m = getMonth();
   const list = document.getElementById('listIngresos');
+
+  const totalPresup = m.ingresos.reduce((s,i)=>s+(Number(i.monto)||0),0);
+  const totalCobrado = m.ingresos.reduce((s,i)=>s+(Number(i.cobrado)||0),0);
+  const totalFalta = m.ingresos.reduce((s,i)=>s+Math.max((Number(i.monto)||0)-(Number(i.cobrado)||0),0),0);
+
+  // Resumen de 3 bloques
+  const resumen = `<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:14px">
+    <div style="background:var(--green-bg);border-radius:8px;padding:10px;text-align:center">
+      <div style="font-size:0.68rem;text-transform:uppercase;letter-spacing:1px;color:var(--green);font-weight:600;margin-bottom:4px">Cobrado</div>
+      <div style="font-family:'JetBrains Mono',monospace;font-weight:700;font-size:1rem;color:var(--green)">${formatMoney(totalCobrado)}</div>
+    </div>
+    <div style="background:var(--gold-bg);border-radius:8px;padding:10px;text-align:center">
+      <div style="font-size:0.68rem;text-transform:uppercase;letter-spacing:1px;color:var(--gold);font-weight:600;margin-bottom:4px">Falta cobrar</div>
+      <div style="font-family:'JetBrains Mono',monospace;font-weight:700;font-size:1rem;color:var(--gold)">${formatMoney(totalFalta)}</div>
+    </div>
+    <div style="background:var(--paper-alt);border-radius:8px;padding:10px;text-align:center;border:1px solid var(--line)">
+      <div style="font-size:0.68rem;text-transform:uppercase;letter-spacing:1px;color:var(--ink-soft);font-weight:600;margin-bottom:4px">Total</div>
+      <div style="font-family:'JetBrains Mono',monospace;font-weight:700;font-size:1rem">${formatMoney(totalPresup)}</div>
+    </div>
+  </div>`;
+
   if(m.ingresos.length===0){
-    list.innerHTML = '<p class="empty">No agregaste ingresos este mes.</p>';
+    list.innerHTML = resumen + '<p class="empty">No agregaste ingresos este mes.</p>';
   }else{
-    list.innerHTML = m.ingresos.map(i=>`
-      <div class="row">
-        <span class="desc">
-          <input type="text" value="${esc(i.descripcion)}" oninput="updateIngreso('${i.id}','descripcion',this.value)">
-        </span>
-        <input type="number" value="${i.monto}" step="1" oninput="updateIngreso('${i.id}','monto',this.value)">
-        <button class="iconbtn" title="Eliminar" onclick="deleteIngreso('${i.id}')">✕</button>
-      </div>`).join('');
+    list.innerHTML = resumen + `<table style="width:100%;border-collapse:collapse">` +
+      m.ingresos.map(i=>{
+        const monto = Number(i.monto)||0;
+        const cobrado = Number(i.cobrado)||0;
+        const bg = cobrado >= monto && monto > 0
+          ? 'background:rgba(63,125,92,0.13)'
+          : cobrado > 0
+          ? 'background:rgba(201,154,59,0.15)'
+          : '';
+        return `<tr style="${bg}">
+          <td style="padding:9px 8px;font-size:1rem;font-weight:500">
+            <input type="text" value="${esc(i.descripcion)}" oninput="updateIngreso('${i.id}','descripcion',this.value)"
+              style="font-size:1rem;font-weight:500;border:none;background:transparent;padding:0;width:100%;color:var(--ink)">
+          </td>
+          <td style="padding:9px 6px;white-space:nowrap;text-align:right;font-family:'JetBrains Mono',monospace;font-weight:700;font-size:0.95rem">
+            ${formatMoney(monto)}
+          </td>
+          <td style="padding:9px 6px;white-space:nowrap;text-align:right">
+            <input type="number" value="${cobrado||0}" step="1" title="Monto cobrado"
+              oninput="updateIngreso('${i.id}','cobrado',this.value)"
+              style="font-family:'JetBrains Mono',monospace;font-size:0.85rem;width:90px;text-align:right;color:var(--ink-soft)">
+          </td>
+          <td style="padding:9px 4px;text-align:right">
+            <button class="iconbtn" title="Eliminar" onclick="deleteIngreso('${i.id}')">✕</button>
+          </td>
+        </tr>
+        <tr><td colspan="4"><div style="height:1px;background:var(--line);opacity:0.5"></div></td></tr>`;
+      }).join('') +
+      `</table>
+      <div style="display:flex;gap:8px;align-items:center;padding:6px 8px 0;font-size:0.72rem;color:var(--ink-soft)">
+        <span style="display:inline-block;width:12px;height:12px;border-radius:3px;background:rgba(63,125,92,0.25)"></span>Cobrado completo
+        <span style="display:inline-block;width:12px;height:12px;border-radius:3px;background:rgba(201,154,59,0.25)"></span>Cobrado parcial
+        <span style="display:inline-block;width:12px;height:12px;border-radius:3px;border:1px solid var(--line)"></span>Sin cobrar
+      </div>`;
   }
-  const tot = m.ingresos.reduce((s,i)=>s+(Number(i.monto)||0),0);
-  document.getElementById('totIngresos').textContent = formatMoney(tot);
+  document.getElementById('totIngresos').textContent = formatMoney(totalPresup);
 }
 function addIngreso(){
   const desc = document.getElementById('newIngresoDesc').value.trim();
@@ -1212,9 +1257,9 @@ function addIngreso(){
 function updateIngreso(id, field, val){
   const item = getMonth().ingresos.find(i=>i.id===id);
   if(!item) return;
-  item[field] = field==='monto' ? Number(val)||0 : val;
+  item[field] = (field==='monto'||field==='cobrado') ? Number(val)||0 : val;
   saveData();
-  if(field==='monto'){ renderIngresos(); renderBalance(); renderDashboard(); }
+  renderIngresos(); renderBalance(); renderDashboard();
 }
 function deleteIngreso(id){
   const m = getMonth();
@@ -1272,8 +1317,7 @@ function renderFijos(){
   const s = sortState.fijos;
   const items = s.field === 'orden' ? m.fijos : sortedList(m.fijos, s.field, s.dir);
 
-  // barra de ordenamiento
-  const sortBar = `<div style="display:flex;gap:5px;align-items:center;margin-bottom:8px;flex-wrap:wrap">
+  const sortBar = `<div style="display:flex;gap:5px;align-items:center;margin-bottom:10px;flex-wrap:wrap">
     <span style="font-size:0.7rem;color:var(--ink-soft);text-transform:uppercase;letter-spacing:0.5px">Ordenar:</span>
     ${sortBtn('fijos','orden','Carga')}
     ${sortBtn('fijos','descripcion','Nombre')}
@@ -1283,29 +1327,49 @@ function renderFijos(){
   if(m.fijos.length===0){
     list.innerHTML = sortBar + '<p class="empty">No agregaste gastos fijos este mes.</p>';
   }else{
-    list.innerHTML = sortBar + items.map(f=>{
-      const estado = estadoFijo(f);
-      return `<div class="row" style="flex-wrap:wrap">
-        <span class="tag" style="background:${colorFor(f.grupo)}">${esc(f.grupo)}</span>
-        <span class="desc">
-          <input type="text" value="${esc(f.descripcion)}" oninput="updateFijo('${f.id}','descripcion',this.value)">
-        </span>
-        <span class="mono">${formatMoney(f.monto)}</span>
-        <input type="number" value="${f.pagado||0}" step="1" title="Pagado" oninput="updateFijo('${f.id}','pagado',this.value)">
-        <span class="badge ${estadoClass(estado)}">${estado}</span>
-        <button class="iconbtn" title="Eliminar" onclick="deleteFijo('${f.id}')">✕</button>
+    list.innerHTML = sortBar + `<table style="width:100%;border-collapse:collapse">` +
+      items.map(f=>{
+        const monto = Number(f.monto)||0;
+        const pagado = Number(f.pagado)||0;
+        const bg = pagado >= monto && monto > 0
+          ? 'background:rgba(63,125,92,0.13)'   // verde
+          : pagado > 0
+          ? 'background:rgba(201,154,59,0.15)'  // amarillo
+          : '';
+        return `<tr style="${bg};border-radius:6px">
+          <td style="padding:9px 8px;font-size:1rem;font-weight:500">
+            <input type="text" value="${esc(f.descripcion)}" oninput="updateFijo('${f.id}','descripcion',this.value)"
+              style="font-size:1rem;font-weight:500;border:none;background:transparent;padding:0;width:100%;color:var(--ink)">
+          </td>
+          <td style="padding:9px 6px;white-space:nowrap;text-align:right;font-family:'JetBrains Mono',monospace;font-weight:700;font-size:0.95rem">
+            ${formatMoney(monto)}
+          </td>
+          <td style="padding:9px 6px;white-space:nowrap;text-align:right">
+            <input type="number" value="${pagado||0}" step="1" title="Monto pagado"
+              oninput="updateFijo('${f.id}','pagado',this.value)"
+              style="font-family:'JetBrains Mono',monospace;font-size:0.85rem;width:90px;text-align:right;color:var(--ink-soft)">
+          </td>
+          <td style="padding:9px 4px;text-align:right">
+            <button class="iconbtn" title="Eliminar" onclick="deleteFijo('${f.id}')">✕</button>
+          </td>
+        </tr>
+        <tr><td colspan="4"><div style="height:1px;background:var(--line);opacity:0.5"></div></td></tr>`;
+      }).join('') +
+      `</table>
+      <div style="display:flex;gap:8px;align-items:center;padding:6px 8px 0;font-size:0.72rem;color:var(--ink-soft)">
+        <span style="display:inline-block;width:12px;height:12px;border-radius:3px;background:rgba(63,125,92,0.25)"></span>Abonado
+        <span style="display:inline-block;width:12px;height:12px;border-radius:3px;background:rgba(201,154,59,0.25)"></span>Parcial
+        <span style="display:inline-block;width:12px;height:12px;border-radius:3px;border:1px solid var(--line)"></span>Sin pagar
       </div>`;
-    }).join('');
   }
   const tot = m.fijos.reduce((s,f)=>s+(Number(f.monto)||0),0);
   document.getElementById('totFijos').textContent = formatMoney(tot);
 }
 function addFijo(){
-  const grupo = document.getElementById('newFijoGrupo').value;
   const desc = document.getElementById('newFijoDesc').value.trim();
   const monto = document.getElementById('newFijoMonto').value;
   if(!desc) return;
-  getMonth().fijos.push({id:uid(), grupo, descripcion:desc, monto:Number(monto)||0, pagado:0});
+  getMonth().fijos.push({id:uid(), descripcion:desc, monto:Number(monto)||0, pagado:0});
   document.getElementById('newFijoDesc').value='';
   document.getElementById('newFijoMonto').value='';
   saveData(); renderAll();
