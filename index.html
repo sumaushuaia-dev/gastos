@@ -1,3 +1,4 @@
+
 <!DOCTYPE html>
 <html lang="es">
 <head>
@@ -1382,32 +1383,32 @@ function renderFijos(){
           : pagado > 0
           ? 'background:rgba(201,154,59,0.15)'  // amarillo
           : '';
-        return `<tr style="${bg};border-radius:6px">
-          <td style="padding:9px 8px;font-size:1rem;font-weight:500">
+        return `<tr style="${bg}">
+          <td style="padding:9px 8px">
             <input type="text" value="${esc(f.descripcion)}" oninput="updateFijo('${f.id}','descripcion',this.value)"
-              style="font-size:1rem;font-weight:500;border:none;background:transparent;padding:0;width:100%;color:var(--ink)">
-            ${f.vence && (Number(f.pagado)||0) < (Number(f.monto)||0) ? venceBadge(f.vence) : ''}
+              style="font-size:1rem;font-weight:500;border:none;background:transparent;padding:0;width:100%;color:var(--ink);display:block">
+            <div style="display:flex;align-items:center;gap:6px;margin-top:3px;flex-wrap:wrap">
+              <input type="date" value="${f.vence||''}" title="Fecha de vencimiento"
+                onchange="updateFijo('${f.id}','vence',this.value)"
+                style="font-family:'JetBrains Mono',monospace;font-size:0.72rem;border:1px solid var(--line);border-radius:4px;padding:2px 4px;color:var(--ink-soft);max-width:130px">
+              ${f.vence && (Number(f.pagado)||0) < (Number(f.monto)||0) ? venceBadge(f.vence) : ''}
+            </div>
           </td>
-          <td style="padding:9px 6px;white-space:nowrap;text-align:right">
-            <input type="date" value="${f.vence||''}" title="Fecha de vencimiento"
-              onchange="updateFijo('${f.id}','vence',this.value)"
-              style="font-family:'JetBrains Mono',monospace;font-size:0.75rem;border:1px solid var(--line);border-radius:5px;padding:3px 5px;color:var(--ink-soft);width:130px">
-          </td>
-          <td style="padding:9px 6px;white-space:nowrap;text-align:right;font-family:'JetBrains Mono',monospace;font-weight:700;font-size:0.95rem">
+          <td style="padding:9px 6px;white-space:nowrap;text-align:right;font-family:'JetBrains Mono',monospace;font-weight:700;font-size:0.95rem;vertical-align:top">
             ${formatMoney(monto)}
           </td>
-          <td style="padding:9px 6px;white-space:nowrap;text-align:right">
+          <td style="padding:9px 6px;white-space:nowrap;text-align:right;vertical-align:top">
             <input type="text" inputmode="numeric" value="${fmtInput(pagado)}" placeholder="0"
               onfocus="onMontoFocus(this)"
               onblur="onMontoBlur(this); updateFijo('${f.id}','pagado',parseInput(this.value))"
               onkeydown="if(event.key==='Enter'){onMontoBlur(this);updateFijo('${f.id}','pagado',parseInput(this.value))}"
               style="font-family:'JetBrains Mono',monospace;font-size:0.9rem;width:110px;text-align:right;color:var(--ink-soft);padding:4px 6px;border:1px solid var(--line);border-radius:6px;background:#fff">
           </td>
-          <td style="padding:9px 4px;text-align:right">
+          <td style="padding:9px 4px;text-align:right;vertical-align:top">
             <button class="iconbtn" title="Eliminar" onclick="deleteFijo('${f.id}')">✕</button>
           </td>
         </tr>
-        <tr><td colspan="5"><div style="height:1px;background:var(--line);opacity:0.5"></div></td></tr>`;
+        <tr><td colspan="4"><div style="height:1px;background:var(--line);opacity:0.5"></div></td></tr>`;
       }).join('') +
       `</table>
       <div style="display:flex;gap:8px;align-items:center;padding:6px 8px 0;font-size:0.72rem;color:var(--ink-soft)">
