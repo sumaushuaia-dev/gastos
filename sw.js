@@ -1,4 +1,4 @@
-const CACHE_NAME = 'cuentas-de-casa-v2';
+const CACHE_NAME = 'cuentas-de-casa-v4';
 const ASSETS = [
   './index.html',
   './manifest.json',
@@ -27,6 +27,7 @@ self.addEventListener('fetch', (event) => {
   if (url.hostname.includes('api.anthropic.com')) return;
   if (url.hostname.includes('supabase.co')) return;
 
+  // Para el index.html siempre intentar red primero, caché como fallback
   if (url.pathname.endsWith('/') || url.pathname.endsWith('index.html')) {
     event.respondWith(
       fetch(event.request)
