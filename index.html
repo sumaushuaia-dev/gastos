@@ -1387,7 +1387,7 @@ function renderFijos(){
           <td style="padding:9px 8px;font-size:1rem;font-weight:500">
             <input type="text" value="${esc(f.descripcion)}" oninput="updateFijo('${f.id}','descripcion',this.value)"
               style="font-size:1rem;font-weight:500;border:none;background:transparent;padding:0;width:100%;color:var(--ink)">
-            ${f.vence ? venceBadge(f.vence) : ''}
+            ${f.vence && (Number(f.pagado)||0) < (Number(f.monto)||0) ? venceBadge(f.vence) : ''}
           </td>
           <td style="padding:9px 6px;white-space:nowrap;text-align:right">
             <input type="date" value="${f.vence||''}" title="Fecha de vencimiento"
