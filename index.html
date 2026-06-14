@@ -446,7 +446,7 @@ footer{
     <button data-tab="dashboard" class="active">Resumen</button>
     <button data-tab="ingresos">Ingresos</button>
     <button data-tab="fijos">Gastos fijos</button>
-    <button data-tab="variables">Gastos variables</button>
+    <button data-tab="variables">Consumo</button>
     <button data-tab="cuotas">Tarjetas</button>
     <button data-tab="categorias">Categorías</button>
     <button data-tab="ajustes">Ajustes</button>
@@ -457,7 +457,7 @@ footer{
     <section class="tabpanel active" id="tab-dashboard">
       <div class="summary-grid" id="summaryGrid"></div>
       <div class="card">
-        <h2>Gastos variables por categoría</h2>
+        <h2>Consumo por categoría</h2>
         <div id="dashDonut"></div>
       </div>
       <div class="card">
@@ -496,23 +496,22 @@ footer{
       </div>
     </section>
 
-    <!-- GASTOS VARIABLES -->
+    <!-- GASTOS VARIABLES / CONSUMO -->
     <section class="tabpanel" id="tab-variables">
       <div class="scanbox">
         <strong>📷 Cargar desde factura / ticket</strong>
-        <p>Sacá una foto del comprobante y la app va a tratar de leer el monto, el comercio y sugerir una categoría.</p>
+        <p>Sacá una foto del comprobante y la app va a tratar de leer el monto y sugerir un ítem.</p>
         <input type="file" id="facturaInput" accept="image/*" capture="environment" onchange="onFacturaSelected(event)">
         <div id="scanArea"></div>
       </div>
       <div class="card">
-        <h2>Gastos variables del mes <span class="tot" id="totVariables">$ 0</span></h2>
+        <h2>Consumo del mes <span class="tot" id="totVariables">$ 0</span></h2>
         <div id="listVariables"></div>
         <div class="addform">
           <input type="date" id="newVarFecha">
-          <input type="text" id="newVarDesc" placeholder="Descripción">
+          <select id="newVarItem" style="flex:1 1 140px"></select>
           <input type="text" inputmode="numeric" id="newVarMonto" placeholder="Monto"
             onfocus="onMontoFocus(this)" onblur="onMontoBlur(this)">
-          <select id="newVarCategoria"></select>
           <button class="addbtn" onclick="addVariable()">Agregar</button>
         </div>
       </div>
@@ -550,10 +549,11 @@ footer{
     <!-- CATEGORIAS -->
     <section class="tabpanel" id="tab-categorias">
       <div class="card">
-        <h2>Categorías de gastos variables</h2>
+        <h2>Ítems de consumo</h2>
+        <p class="empty" style="margin-top:-4px;margin-bottom:8px">Estos son los ítems que aparecen en el selector de Consumo. Agregá o quitá según lo que uses.</p>
         <div class="chiplist" id="chipCategorias"></div>
         <div class="addform">
-          <input type="text" id="newCategoria" placeholder="Nueva categoría">
+          <input type="text" id="newCategoria" placeholder="Nuevo ítem (ej. Farmacia)">
           <button class="addbtn" onclick="addCategoria()">Agregar</button>
         </div>
       </div>
@@ -733,7 +733,7 @@ async function bootApp(){
 const MONTHS = ['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'];
 const PALETTE = ['#1E6F5C','#C99A3B','#B6402F','#3D6B8A','#7A8450','#8C5E8C','#C97A4A','#5C6B73','#A6763F','#4F8C7A'];
 
-const SEED_CATEGORIES = ['Supermercado','Comida afuera','Combustible','Salud','Hogar y limpieza','Entretenimiento','Ropa','Educación','Transporte','Regalos','Otros'];
+const SEED_CATEGORIES = ['Supermercado','Verdulería','Carnicería','Fiambrería','Farmacia','Comida afuera','Combustible','Transporte','Ropa','Hogar','Entretenimiento','Educación','Salud','Regalos','Efectivo','Otros'];
 const SEED_GROUPS = ['Juan','Chicos','Hogar'];
 
 let state = {
@@ -1127,8 +1127,8 @@ function renderAll(){
 }
 
 function renderSelectsOptions(){
-  const selVarCat = document.getElementById('newVarCategoria');
-  if(selVarCat) selVarCat.innerHTML = state.categories.map(c=>`<option value="${esc(c)}">${esc(c)}</option>`).join('');
+  const selVarItem = document.getElementById('newVarItem');
+  if(selVarItem) selVarItem.innerHTML = state.categories.map(c=>`<option value="${esc(c)}">${esc(c)}</option>`).join('');
   const tarjFechaInput = document.getElementById('newTarjFecha');
   if(tarjFechaInput && !tarjFechaInput.value){
     const today = new Date();
@@ -1172,7 +1172,7 @@ function renderDashboard(){
   document.getElementById('summaryGrid').innerHTML = `
     <div class="summary-card"><div class="label">Cobrado</div><div class="val" style="color:var(--green)">${formatMoney(t.ingresoCobrado)}</div></div>
     <div class="summary-card"><div class="label">Gastos fijos</div><div class="val">${formatMoney(t.fijos)}</div></div>
-    <div class="summary-card"><div class="label">Gastos variables</div><div class="val">${formatMoney(t.variables)}</div></div>
+    <div class="summary-card"><div class="label">Consumo</div><div class="val">${formatMoney(t.variables)}</div></div>
     <div class="summary-card"><div class="label">Tarjetas</div><div class="val">${formatMoney(t.cuotas)}</div></div>
   `;
 
@@ -1444,7 +1444,6 @@ function deleteFijo(id){
   saveData(); renderAll();
 }
 
-/* ===== Gastos Variables ===== */
 function renderVariables(){
   const m = getMonth();
   const list = document.getElementById('listVariables');
@@ -1454,37 +1453,49 @@ function renderVariables(){
   const sortBar = `<div style="display:flex;gap:5px;align-items:center;margin-bottom:8px;flex-wrap:wrap">
     <span style="font-size:0.7rem;color:var(--ink-soft);text-transform:uppercase;letter-spacing:0.5px">Ordenar:</span>
     ${sortBtn('variables','fecha','Fecha')}
-    ${sortBtn('variables','descripcion','Nombre')}
+    ${sortBtn('variables','descripcion','Ítem')}
     ${sortBtn('variables','monto','Monto')}
   </div>`;
 
   if(m.variables.length===0){
-    list.innerHTML = sortBar + '<p class="empty">No agregaste gastos variables este mes.</p>';
+    list.innerHTML = sortBar + '<p class="empty">No agregaste consumos este mes.</p>';
   }else{
-    list.innerHTML = sortBar + items.map(v=>`
-      <div class="row" style="flex-wrap:wrap">
-        <input type="date" value="${v.fecha||''}" oninput="updateVariable('${v.id}','fecha',this.value)" style="flex:0 0 130px;font-family:'JetBrains Mono',monospace;font-size:0.8rem">
-        <span class="desc">
-          <input type="text" value="${esc(v.descripcion)}" oninput="updateVariable('${v.id}','descripcion',this.value)">
-        </span>
-        <select onchange="updateVariable('${v.id}','categoria',this.value)">
-          ${state.categories.map(c=>`<option value="${esc(c)}" ${c===v.categoria?'selected':''}>${esc(c)}</option>`).join('')}
-        </select>
-        <input type="number" value="${v.monto}" step="1" oninput="updateVariable('${v.id}','monto',this.value)">
-        <button class="iconbtn" title="Eliminar" onclick="deleteVariable('${v.id}')">✕</button>
-      </div>`).join('');
+    list.innerHTML = sortBar + `<table style="width:100%;border-collapse:collapse">` +
+      items.map(v=>`
+        <tr>
+          <td style="padding:8px 8px;font-size:0.8rem;color:var(--ink-soft);font-family:'JetBrains Mono',monospace;white-space:nowrap;vertical-align:middle">
+            <input type="date" value="${v.fecha||''}" onchange="updateVariable('${v.id}','fecha',this.value)"
+              style="font-family:'JetBrains Mono',monospace;font-size:0.75rem;border:1px solid var(--line);border-radius:4px;padding:2px 4px;color:var(--ink-soft);max-width:120px">
+          </td>
+          <td style="padding:8px 6px;font-size:1rem;font-weight:500;vertical-align:middle">
+            <select onchange="updateVariable('${v.id}','descripcion',this.value)"
+              style="font-size:0.95rem;font-weight:500;border:none;background:transparent;padding:0;color:var(--ink);width:100%">
+              ${state.categories.map(c=>`<option value="${esc(c)}" ${c===v.descripcion?'selected':''}>${esc(c)}</option>`).join('')}
+            </select>
+          </td>
+          <td style="padding:8px 6px;white-space:nowrap;text-align:right;vertical-align:middle">
+            <input type="text" inputmode="numeric" value="${fmtInput(v.monto)}" placeholder="0"
+              onfocus="onMontoFocus(this)"
+              onblur="onMontoBlur(this); updateVariable('${v.id}','monto',parseInput(this.value))"
+              onkeydown="if(event.key==='Enter'){onMontoBlur(this);updateVariable('${v.id}','monto',parseInput(this.value))}"
+              style="font-family:'JetBrains Mono',monospace;font-size:0.9rem;width:110px;text-align:right;color:var(--ink);font-weight:600;padding:4px 6px;border:1px solid var(--line);border-radius:6px;background:#fff">
+          </td>
+          <td style="padding:8px 4px;text-align:right;vertical-align:middle">
+            <button class="iconbtn" onclick="deleteVariable('${v.id}')">✕</button>
+          </td>
+        </tr>
+        <tr><td colspan="4"><div style="height:1px;background:var(--line);opacity:0.4"></div></td></tr>
+      `).join('') + `</table>`;
   }
   const tot = m.variables.reduce((s,v)=>s+(Number(v.monto)||0),0);
   document.getElementById('totVariables').textContent = formatMoney(tot);
 }
 function addVariable(prefill){
   const fecha = prefill?.fecha || document.getElementById('newVarFecha').value;
-  const desc = (prefill?.descripcion || document.getElementById('newVarDesc').value).trim();
+  const descripcion = prefill?.descripcion || document.getElementById('newVarItem').value;
   const monto = prefill?.monto ?? parseInput(document.getElementById('newVarMonto').value);
-  const categoria = prefill?.categoria || document.getElementById('newVarCategoria').value;
-  if(!desc) return;
-  getMonth().variables.push({id:uid(), fecha, descripcion:desc, monto:Number(monto)||0, categoria});
-  document.getElementById('newVarDesc').value='';
+  if(!descripcion) return;
+  getMonth().variables.push({id:uid(), fecha, descripcion, monto:Number(monto)||0, categoria: descripcion});
   document.getElementById('newVarMonto').value='';
   saveData(); renderAll();
 }
@@ -1553,14 +1564,14 @@ async function onFacturaSelected(event){
 
     const resultDiv = document.createElement('div');
     resultDiv.className = 'scan-result';
-    const catOptions = state.categories.map(c=>`<option value="${esc(c)}" ${c===extracted.categoria?'selected':''}>${esc(c)}</option>`).join('');
+    const itemOptions = state.categories.map(c=>`<option value="${esc(c)}" ${c===extracted.categoria?'selected':''}>${esc(c)}</option>`).join('');
     resultDiv.innerHTML = `
       <p style="margin:0 0 6px;font-size:0.85rem">Revisá los datos y confirmá:</p>
       <div class="addform">
         <input type="date" id="scanFecha" value="${extracted.fecha || document.getElementById('newVarFecha').value}">
-        <input type="text" id="scanDesc" value="${esc(extracted.comercio || '')}" placeholder="Comercio / descripción">
-        <input type="number" id="scanMonto" value="${extracted.monto || ''}" step="1" placeholder="Monto">
-        <select id="scanCategoria">${catOptions}</select>
+        <select id="scanDesc">${itemOptions}</select>
+        <input type="text" inputmode="numeric" id="scanMonto" value="${fmtInput(extracted.monto||0)}" placeholder="Monto"
+          onfocus="onMontoFocus(this)" onblur="onMontoBlur(this)">
         <button class="addbtn" onclick="confirmarFactura()">Agregar gasto</button>
         <button class="addbtn secondary" onclick="document.getElementById('scanArea').innerHTML=''; document.getElementById('facturaInput').value='';">Cancelar</button>
       </div>
@@ -1609,11 +1620,10 @@ async function analizarFactura(base64, mediaType){
 
 function confirmarFactura(){
   const fecha = document.getElementById('scanFecha').value;
-  const descripcion = document.getElementById('scanDesc').value.trim();
-  const monto = document.getElementById('scanMonto').value;
-  const categoria = document.getElementById('scanCategoria').value;
-  if(!descripcion){ alert('Poné una descripción para el gasto.'); return; }
-  addVariable({fecha, descripcion, monto, categoria});
+  const descripcion = document.getElementById('scanDesc').value;
+  const monto = parseInput(document.getElementById('scanMonto').value);
+  if(!descripcion){ alert('Elegí un ítem.'); return; }
+  addVariable({fecha, descripcion, monto});
   document.getElementById('scanArea').innerHTML = '';
   document.getElementById('facturaInput').value = '';
   document.querySelectorAll('nav.tabs button').forEach(b=>b.classList.remove('active'));
