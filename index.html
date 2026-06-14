@@ -492,7 +492,14 @@ footer{
           <input type="date" id="newFijoVence" title="Fecha de vencimiento (opcional)" style="flex:0 0 140px;font-family:'JetBrains Mono',monospace;font-size:0.8rem">
           <button class="addbtn" onclick="addFijo()">Agregar</button>
         </div>
-        <p class="empty" style="margin-top:8px">Tip: tocá el monto "pagado" para marcar cuánto ya abonaste de cada gasto. El estado se actualiza solo.</p>
+        <div id="copiarMesBox" style="margin-top:12px;padding-top:12px;border-top:1px dashed var(--line);display:none">
+          <p class="empty" style="margin:0 0 8px">Este mes no tiene gastos fijos todavía. ¿Copiás los del mes anterior?</p>
+          <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
+            <span id="copiarMesOrigen" style="font-size:0.85rem;color:var(--ink-soft)"></span>
+            <button class="addbtn" onclick="copiarFijosDelMesAnterior()">Copiar gastos fijos</button>
+          </div>
+        </div>
+        <p class="empty" style="margin-top:8px">Tip: el campo de la derecha es lo que ya abonaste. El color del renglón se actualiza solo.</p>
       </div>
     </section>
 
@@ -1443,9 +1450,54 @@ function renderFijos(){
   const totVariables2 = m.variables.reduce((s,v)=>s+(Number(v.monto)||0),0);
   const tot = m.fijos.reduce((s,f)=> s + (f.esConsumo ? totVariables2 : (Number(f.monto)||0)), 0);
   document.getElementById('totFijos').textContent = formatMoney(tot);
+  renderCopiarMesBox();
 }
+function mesAnteriorKey(key){
+  const [y, m] = key.split('-').map(Number);
+  const d = new Date(y, m-2, 1); // mes anterior
+  return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`;
+}
+
+function copiarFijosDelMesAnterior(){
+  const key = monthKey();
+  const anteriorKey = mesAnteriorKey(key);
+  const anterior = state.months[anteriorKey];
+  if(!anterior || !anterior.fijos || anterior.fijos.length === 0){
+    alert('No hay gastos fijos en el mes anterior para copiar.');
+    return;
+  }
+  const m = getMonth();
+  // Copiar cada ítem con nuevo id, pagado en 0, manteniendo monto, descripcion, vence, esConsumo
+  anterior.fijos.forEach(f => {
+    m.fijos.push({
+      id: uid(),
+      descripcion: f.descripcion,
+      monto: f.esConsumo ? 0 : (Number(f.monto)||0),
+      pagado: 0,
+      vence: f.vence || '',
+      esConsumo: f.esConsumo || false
+    });
+  });
+  saveData();
+  renderAll();
+}
+
+function renderCopiarMesBox(){
+  const box = document.getElementById('copiarMesBox');
+  if(!box) return;
+  const key = monthKey();
+  const m = getMonth();
+  if(m.fijos.length > 0){ box.style.display='none'; return; }
+  // Buscar mes anterior con fijos
+  const anteriorKey = mesAnteriorKey(key);
+  const anterior = state.months[anteriorKey];
+  if(!anterior || !anterior.fijos || anterior.fijos.length === 0){ box.style.display='none'; return; }
+  const [y, mo] = anteriorKey.split('-');
+  document.getElementById('copiarMesOrigen').textContent = `${MONTHS[Number(mo)-1]} ${y} (${anterior.fijos.length} ítems)`;
+  box.style.display='block';
+}
+
 function addFijo(){
-  const desc = document.getElementById('newFijoDesc').value.trim();
   const monto = parseInput(document.getElementById('newFijoMonto').value);
   const vence = document.getElementById('newFijoVence').value || '';
   if(!desc) return;
