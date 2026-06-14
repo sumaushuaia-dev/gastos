@@ -943,9 +943,10 @@ async function pullRemote(){
   const cfg = getSyncConfig();
   if(!cfg) return null;
   try{
-    const res = await fetch(`${cfg.url}/rest/v1/cuentas?id=eq.${encodeURIComponent(cfg.code)}&select=data,updated_at`, {
-      headers: { 'apikey': cfg.key, 'Authorization': `Bearer ${cfg.key}` }
-    });
+    const headers = cfg.key.startsWith('sb_')
+      ? { 'Authorization': `Bearer ${cfg.key}`, 'Content-Type': 'application/json' }
+      : { 'apikey': cfg.key, 'Authorization': `Bearer ${cfg.key}` };
+    const res = await fetch(`${cfg.url}/rest/v1/cuentas?id=eq.${encodeURIComponent(cfg.code)}&select=data,updated_at`, { headers });
     if(!res.ok) throw new Error('HTTP '+res.status);
     const rows = await res.json();
     if(Array.isArray(rows) && rows.length>0) return rows[0];
@@ -962,22 +963,23 @@ async function pushRemote(){
   if(!cfg) return;
   try{
     const now = new Date().toISOString();
+    const headers = cfg.key.startsWith('sb_')
+      ? { 'Authorization': `Bearer ${cfg.key}`, 'Content-Type': 'application/json', 'Prefer': 'resolution=merge-duplicates' }
+      : { 'apikey': cfg.key, 'Authorization': `Bearer ${cfg.key}`, 'Content-Type': 'application/json', 'Prefer': 'resolution=merge-duplicates' };
     const res = await fetch(`${cfg.url}/rest/v1/cuentas`, {
       method:'POST',
-      headers:{
-        'apikey': cfg.key,
-        'Authorization': `Bearer ${cfg.key}`,
-        'Content-Type':'application/json',
-        'Prefer':'resolution=merge-duplicates'
-      },
+      headers,
       body: JSON.stringify({ id: cfg.code, data: state, updated_at: now })
     });
-    if(!res.ok) throw new Error('HTTP '+res.status);
+    if(!res.ok){
+      const txt = await res.text();
+      throw new Error(`HTTP ${res.status}: ${txt}`);
+    }
     localStorage.setItem('cuentas-local-updated', now);
     setSyncStatus('✅ Sincronizado.');
   }catch(e){
     console.error('pushRemote', e);
-    setSyncStatus('⚠️ No se pudo guardar en la nube. Revisá la configuración.');
+    setSyncStatus('⚠️ No se pudo guardar en la nube: '+e.message);
   }
 }
 
@@ -1123,31 +1125,36 @@ document.querySelectorAll('nav.tabs button').forEach(btn=>{
 
 /* ===== Render ===== */
 function renderAll(){
-  renderSelectsOptions();
-  renderDashboard();
-  renderIngresos();
-  renderFijos();
-  renderVariables();
-  renderTarjetas();
-  renderCategorias();
-  renderBalance();
+  try{ renderSelectsOptions(); }catch(e){ console.error('renderSelectsOptions',e); }
+  try{ renderDashboard(); }catch(e){ console.error('renderDashboard',e); }
+  try{ renderIngresos(); }catch(e){ console.error('renderIngresos',e); }
+  try{ renderFijos(); }catch(e){ console.error('renderFijos',e); }
+  try{ renderVariables(); }catch(e){ console.error('renderVariables',e); }
+  try{ renderTarjetas(); }catch(e){ console.error('renderTarjetas',e); }
+  try{ renderCategorias(); }catch(e){ console.error('renderCategorias',e); }
+  try{ renderBalance(); }catch(e){ console.error('renderBalance',e); }
 }
 
 function renderSelectsOptions(){
   const selVarItem = document.getElementById('newVarItem');
   if(selVarItem) selVarItem.innerHTML = state.categories.map(c=>`<option value="${esc(c)}">${esc(c)}</option>`).join('');
+
   const tarjFechaInput = document.getElementById('newTarjFecha');
   if(tarjFechaInput && !tarjFechaInput.value){
-    const today = new Date();
-    tarjFechaInput.value = today.toISOString().slice(0,10);
+    tarjFechaInput.value = new Date().toISOString().slice(0,10);
   }
+
   const fechaInput = document.getElementById('newVarFecha');
-  if(!fechaInput.value){
+  if(fechaInput && !fechaInput.value){
     const key = monthKey();
     const today = new Date();
     const todayKey = `${today.getFullYear()}-${String(today.getMonth()+1).padStart(2,'0')}`;
     fechaInput.value = (todayKey === key) ? today.toISOString().slice(0,10) : `${key}-01`;
   }
+
+  // fecha gastos fijos — si hay vence input sin valor, poner mes actual como sugerencia
+  const fijoVence = document.getElementById('newFijoVence');
+  // solo inicializar si existe, sin poner valor por defecto (es opcional)
 }
 
 function esc(s){
@@ -1521,14 +1528,21 @@ function renderCopiarMesBox(){
 }
 
 function addFijo(){
-  const monto = parseInput(document.getElementById('newFijoMonto').value);
-  const vence = document.getElementById('newFijoVence').value || '';
-  if(!desc) return;
-  getMonth().fijos.push({id:uid(), descripcion:desc, monto, pagado:0, vence});
-  document.getElementById('newFijoDesc').value='';
-  document.getElementById('newFijoMonto').value='';
-  document.getElementById('newFijoVence').value='';
-  saveData(); renderAll();
+  try{
+    const descEl = document.getElementById('newFijoDesc');
+    const montoEl = document.getElementById('newFijoMonto');
+    const venceEl = document.getElementById('newFijoVence');
+    if(!descEl || !montoEl){ console.error('addFijo: elementos no encontrados'); return; }
+    const desc = descEl.value.trim();
+    const monto = parseInput(montoEl.value);
+    const vence = venceEl ? venceEl.value : '';
+    if(!desc) return;
+    getMonth().fijos.push({id:uid(), descripcion:desc, monto, pagado:0, vence, esConsumo:false});
+    descEl.value='';
+    montoEl.value='';
+    if(venceEl) venceEl.value='';
+    saveData(); renderAll();
+  }catch(e){ console.error('addFijo error:', e); alert('Error al agregar: '+e.message); }
 }
 function updateFijo(id, field, val){
   const item = getMonth().fijos.find(f=>f.id===id);
