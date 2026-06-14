@@ -1,4 +1,4 @@
-const CACHE_NAME = 'cuentas-de-casa-v1';
+const CACHE_NAME = 'cuentas-de-casa-v2';
 const ASSETS = [
   './index.html',
   './manifest.json',
@@ -24,8 +24,22 @@ self.addEventListener('activate', (event) => {
 
 self.addEventListener('fetch', (event) => {
   const url = new URL(event.request.url);
-  // No cachear llamadas a la API de Anthropic
   if (url.hostname.includes('api.anthropic.com')) return;
+  if (url.hostname.includes('supabase.co')) return;
+
+  // Para el index.html siempre intentar red primero, caché como fallback
+  if (url.pathname.endsWith('/') || url.pathname.endsWith('index.html')) {
+    event.respondWith(
+      fetch(event.request)
+        .then((response) => {
+          const clone = response.clone();
+          caches.open(CACHE_NAME).then((cache) => cache.put(event.request, clone));
+          return response;
+        })
+        .catch(() => caches.match(event.request))
+    );
+    return;
+  }
 
   event.respondWith(
     caches.match(event.request).then((cached) => {
