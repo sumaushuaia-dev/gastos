@@ -915,7 +915,7 @@ function saveData(){
 
 /* ===== Sincronización con Supabase (configuración fija) ===== */
 const SUPABASE_URL = 'https://qototvmiuhwukoldcacs.supabase.co';
-const SUPABASE_KEY = 'sb_publishable_F-LhW04QGD8k00xb5lU9IA_vABDPfxq';
+const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InFvdG90dm1pdWh3dWtvbGRjYWNzIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODEzNzU4ODEsImV4cCI6MjA5Njk1MTg4MX0.8ll6r9HJ5R8pFcJyZVeq22YmlI9mFYhIyYgsT4VTwFg';
 const SUPABASE_CODE = 'CASA2026';
 
 function getSyncConfig(){
@@ -931,17 +931,19 @@ async function pullRemote(){
   const cfg = getSyncConfig();
   if(!cfg) return null;
   try{
-    const headers = cfg.key.startsWith('sb_')
-      ? { 'Authorization': `Bearer ${cfg.key}`, 'Content-Type': 'application/json' }
-      : { 'apikey': cfg.key, 'Authorization': `Bearer ${cfg.key}` };
+    const headers = {
+      'apikey': cfg.key,
+      'Authorization': `Bearer ${cfg.key}`,
+      'Content-Type': 'application/json'
+    };
     const res = await fetch(`${cfg.url}/rest/v1/cuentas?id=eq.${encodeURIComponent(cfg.code)}&select=data,updated_at`, { headers });
-    if(!res.ok) throw new Error('HTTP '+res.status);
+    if(!res.ok) throw new Error('HTTP '+res.status+' '+await res.text());
     const rows = await res.json();
     if(Array.isArray(rows) && rows.length>0) return rows[0];
     return null;
   }catch(e){
     console.error('pullRemote', e);
-    setSyncStatus('⚠️ No se pudo conectar con la nube. Revisá la configuración.');
+    setSyncStatus('⚠️ Error al conectar: '+e.message);
     return null;
   }
 }
@@ -951,23 +953,22 @@ async function pushRemote(){
   if(!cfg) return;
   try{
     const now = new Date().toISOString();
-    const headers = cfg.key.startsWith('sb_')
-      ? { 'Authorization': `Bearer ${cfg.key}`, 'Content-Type': 'application/json', 'Prefer': 'resolution=merge-duplicates' }
-      : { 'apikey': cfg.key, 'Authorization': `Bearer ${cfg.key}`, 'Content-Type': 'application/json', 'Prefer': 'resolution=merge-duplicates' };
     const res = await fetch(`${cfg.url}/rest/v1/cuentas`, {
       method:'POST',
-      headers,
+      headers:{
+        'apikey': cfg.key,
+        'Authorization': `Bearer ${cfg.key}`,
+        'Content-Type': 'application/json',
+        'Prefer': 'resolution=merge-duplicates'
+      },
       body: JSON.stringify({ id: cfg.code, data: state, updated_at: now })
     });
-    if(!res.ok){
-      const txt = await res.text();
-      throw new Error(`HTTP ${res.status}: ${txt}`);
-    }
+    if(!res.ok) throw new Error('HTTP '+res.status+' '+await res.text());
     localStorage.setItem('cuentas-local-updated', now);
     setSyncStatus('✅ Sincronizado.');
   }catch(e){
     console.error('pushRemote', e);
-    setSyncStatus('⚠️ No se pudo guardar en la nube: '+e.message);
+    setSyncStatus('⚠️ Error al guardar: '+e.message);
   }
 }
 
