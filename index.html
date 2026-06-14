@@ -810,7 +810,7 @@ const SEED_JUNIO_2026 = {
   ],
   fijos: [
     {id:uid(), grupo:'Juan', descripcion:'Alquiler Bahia Blanca', monto:1470000, pagado:1470000},
-    {id:uid(), grupo:'Juan', descripcion:'Alimentos', monto:1228899, pagado:1228899},
+    {id:uid(), grupo:'Juan', descripcion:'Consumos variables', monto:0, pagado:0, esConsumo:true},
     {id:uid(), grupo:'Chicos', descripcion:'Colegio Puerto del Sur', monto:1800000, pagado:1000000},
     {id:uid(), grupo:'Juan', descripcion:'Limpieza', monto:800000, pagado:400000},
     {id:uid(), grupo:'Juan', descripcion:'Tarjeta Visa Hipotecario Juan', monto:2100000, pagado:150000},
@@ -1152,11 +1152,19 @@ function calcTotals(){
   const key = monthKey();
   const ingresos = m.ingresos.reduce((s,i)=>s+(Number(i.monto)||0),0);
   const ingresoCobrado = m.ingresos.reduce((s,i)=>s+(Number(i.cobrado)||0),0);
-  const fijos = m.fijos.reduce((s,f)=>s+(Number(f.monto)||0),0);
-  const fijosResta = m.fijos.reduce((s,f)=>s+Math.max((Number(f.monto)||0)-(Number(f.pagado)||0),0),0);
   const variables = m.variables.reduce((s,v)=>s+(Number(v.monto)||0),0);
+  // Los fijos que tienen esConsumo:true toman el valor de variables automáticamente
+  const fijos = m.fijos.reduce((s,f)=>{
+    const monto = f.esConsumo ? variables : (Number(f.monto)||0);
+    return s + monto;
+  },0);
+  const fijosResta = m.fijos.reduce((s,f)=>{
+    const monto = f.esConsumo ? variables : (Number(f.monto)||0);
+    const pagado = f.esConsumo ? variables : (Number(f.pagado)||0);
+    return s + Math.max(monto - pagado, 0);
+  },0);
   const cuotas = totTarjetasMes(key);
-  const balance = ingresoCobrado - fijos - variables - cuotas;
+  const balance = ingresoCobrado - fijos - cuotas;
   return {ingresos, ingresoCobrado, fijos, fijosResta, variables, cuotas, balance};
 }
 
@@ -1172,7 +1180,7 @@ function renderDashboard(){
   document.getElementById('summaryGrid').innerHTML = `
     <div class="summary-card"><div class="label">Cobrado</div><div class="val" style="color:var(--green)">${formatMoney(t.ingresoCobrado)}</div></div>
     <div class="summary-card"><div class="label">Gastos fijos</div><div class="val">${formatMoney(t.fijos)}</div></div>
-    <div class="summary-card"><div class="label">Consumo</div><div class="val">${formatMoney(t.variables)}</div></div>
+    <div class="summary-card"><div class="label">Consumo</div><div class="val" style="font-size:0.95rem">${formatMoney(t.variables)}</div></div>
     <div class="summary-card"><div class="label">Tarjetas</div><div class="val">${formatMoney(t.cuotas)}</div></div>
   `;
 
@@ -1374,35 +1382,50 @@ function renderFijos(){
   if(m.fijos.length===0){
     list.innerHTML = sortBar + '<p class="empty">No agregaste gastos fijos este mes.</p>';
   }else{
+    const totVariables = m.variables.reduce((s,v)=>s+(Number(v.monto)||0),0);
     list.innerHTML = sortBar + `<table style="width:100%;border-collapse:collapse">` +
       items.map(f=>{
-        const monto = Number(f.monto)||0;
-        const pagado = Number(f.pagado)||0;
+        const esConsumo = !!f.esConsumo;
+        const monto = esConsumo ? totVariables : (Number(f.monto)||0);
+        const pagado = esConsumo ? totVariables : (Number(f.pagado)||0);
         const bg = pagado >= monto && monto > 0
-          ? 'background:rgba(63,125,92,0.13)'   // verde
+          ? 'background:rgba(63,125,92,0.13)'
           : pagado > 0
-          ? 'background:rgba(201,154,59,0.15)'  // amarillo
+          ? 'background:rgba(201,154,59,0.15)'
+          : '';
+        const consumoTag = esConsumo
+          ? `<span style="font-size:0.68rem;font-weight:700;padding:2px 7px;border-radius:4px;background:var(--gold-bg);color:var(--gold);margin-left:6px">AUTO</span>`
           : '';
         return `<tr style="${bg}">
           <td style="padding:9px 8px">
-            <input type="text" value="${esc(f.descripcion)}" oninput="updateFijo('${f.id}','descripcion',this.value)"
-              style="font-size:1rem;font-weight:500;border:none;background:transparent;padding:0;width:100%;color:var(--ink);display:block">
+            <div style="display:flex;align-items:center;gap:4px">
+              <input type="text" value="${esc(f.descripcion)}" oninput="updateFijo('${f.id}','descripcion',this.value)"
+                style="font-size:1rem;font-weight:500;border:none;background:transparent;padding:0;flex:1;color:var(--ink)">
+              ${consumoTag}
+            </div>
             <div style="display:flex;align-items:center;gap:6px;margin-top:3px;flex-wrap:wrap">
               <input type="date" value="${f.vence||''}" title="Fecha de vencimiento"
                 onchange="updateFijo('${f.id}','vence',this.value)"
                 style="font-family:'JetBrains Mono',monospace;font-size:0.72rem;border:1px solid var(--line);border-radius:4px;padding:2px 4px;color:var(--ink-soft);max-width:130px">
-              ${f.vence && (Number(f.pagado)||0) < (Number(f.monto)||0) ? venceBadge(f.vence) : ''}
+              ${f.vence && pagado < monto ? venceBadge(f.vence) : ''}
+              <label style="font-size:0.7rem;color:var(--ink-soft);display:flex;align-items:center;gap:4px;cursor:pointer">
+                <input type="checkbox" ${esConsumo?'checked':''} onchange="updateFijo('${f.id}','esConsumo',this.checked)" style="margin:0">
+                suma consumos variables
+              </label>
             </div>
           </td>
           <td style="padding:9px 6px;white-space:nowrap;text-align:right;font-family:'JetBrains Mono',monospace;font-weight:700;font-size:0.95rem;vertical-align:top">
             ${formatMoney(monto)}
           </td>
           <td style="padding:9px 6px;white-space:nowrap;text-align:right;vertical-align:top">
-            <input type="text" inputmode="numeric" value="${fmtInput(pagado)}" placeholder="0"
-              onfocus="onMontoFocus(this)"
-              onblur="onMontoBlur(this); updateFijo('${f.id}','pagado',parseInput(this.value))"
-              onkeydown="if(event.key==='Enter'){onMontoBlur(this);updateFijo('${f.id}','pagado',parseInput(this.value))}"
-              style="font-family:'JetBrains Mono',monospace;font-size:0.9rem;width:110px;text-align:right;color:var(--ink-soft);padding:4px 6px;border:1px solid var(--line);border-radius:6px;background:#fff">
+            ${esConsumo
+              ? `<span style="font-family:'JetBrains Mono',monospace;font-size:0.8rem;color:var(--ink-soft);padding:4px 6px">auto</span>`
+              : `<input type="text" inputmode="numeric" value="${fmtInput(pagado)}" placeholder="0"
+                  onfocus="onMontoFocus(this)"
+                  onblur="onMontoBlur(this); updateFijo('${f.id}','pagado',parseInput(this.value))"
+                  onkeydown="if(event.key==='Enter'){onMontoBlur(this);updateFijo('${f.id}','pagado',parseInput(this.value))}"
+                  style="font-family:'JetBrains Mono',monospace;font-size:0.9rem;width:110px;text-align:right;color:var(--ink-soft);padding:4px 6px;border:1px solid var(--line);border-radius:6px;background:#fff">`
+            }
           </td>
           <td style="padding:9px 4px;text-align:right;vertical-align:top">
             <button class="iconbtn" title="Eliminar" onclick="deleteFijo('${f.id}')">✕</button>
@@ -1417,7 +1440,8 @@ function renderFijos(){
         <span style="display:inline-block;width:12px;height:12px;border-radius:3px;border:1px solid var(--line)"></span>Sin pagar
       </div>`;
   }
-  const tot = m.fijos.reduce((s,f)=>s+(Number(f.monto)||0),0);
+  const totVariables2 = m.variables.reduce((s,v)=>s+(Number(v.monto)||0),0);
+  const tot = m.fijos.reduce((s,f)=> s + (f.esConsumo ? totVariables2 : (Number(f.monto)||0)), 0);
   document.getElementById('totFijos').textContent = formatMoney(tot);
 }
 function addFijo(){
@@ -1434,7 +1458,9 @@ function addFijo(){
 function updateFijo(id, field, val){
   const item = getMonth().fijos.find(f=>f.id===id);
   if(!item) return;
-  item[field] = (field==='monto'||field==='pagado') ? Number(val)||0 : val;
+  if(field==='esConsumo') item[field] = !!val;
+  else if(field==='monto'||field==='pagado') item[field] = Number(val)||0;
+  else item[field] = val;
   saveData();
   renderFijos(); renderBalance(); renderDashboard();
 }
