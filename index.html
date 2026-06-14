@@ -602,25 +602,13 @@ footer{
       </div>
 
       <div class="card">
-        <h2>Sincronizar entre dispositivos</h2>
-        <p class="empty" style="margin-top:-4px">Conectá la app a una base de datos gratuita en Supabase para que el celular y la compu compartan los mismos datos automáticamente.</p>
+        <h2>☁️ Sincronización automática</h2>
+        <p class="empty" style="margin-top:-4px">Los datos se sincronizan automáticamente entre todos tus dispositivos via Supabase.</p>
+        <p class="empty" id="syncStatus">Conectando...</p>
+        <p class="empty" id="syncConfigStatus"></p>
         <div class="addform">
-          <input type="text" id="syncUrlInput" placeholder="URL del proyecto (https://xxxx.supabase.co)" style="flex:1 1 220px">
-        </div>
-        <div class="addform">
-          <input type="password" id="syncKeyInput" placeholder="anon public key" style="flex:1 1 220px">
-        </div>
-        <div class="addform">
-          <input type="text" id="syncCodeInput" placeholder="Código de sincronización (lo inventás vos, ej. CASA-JP-2026)" style="flex:1 1 220px">
-        </div>
-        <div class="addform">
-          <button class="addbtn" onclick="saveSyncConfig()">Guardar y conectar</button>
           <button class="addbtn secondary" onclick="syncNow()">Sincronizar ahora</button>
-          <button class="addbtn secondary" onclick="clearSyncConfig()">Desconectar</button>
         </div>
-        <p class="empty" id="syncConfigStatus" style="margin-top:6px"></p>
-        <p class="empty" id="syncStatus"></p>
-        <p class="empty">Usá el <strong>mismo código de sincronización</strong> en todos los dispositivos para que compartan los datos. Quien tenga la URL, la clave y el código puede ver/editar estos datos, así que usá un código que no sea obvio.</p>
       </div>
 
       <div class="card">
@@ -925,13 +913,13 @@ function saveData(){
   }
 }
 
-/* ===== Sincronización con Supabase ===== */
+/* ===== Sincronización con Supabase (configuración fija) ===== */
+const SUPABASE_URL = 'https://qototvmiuhwukoldcacs.supabase.co';
+const SUPABASE_KEY = 'sb_publishable_F-LhW04QGD8k00xb5lU9IA_vABDPfxq';
+const SUPABASE_CODE = 'CASA2026';
+
 function getSyncConfig(){
-  const url = localStorage.getItem('cuentas-supabase-url');
-  const key = localStorage.getItem('cuentas-supabase-key');
-  const code = localStorage.getItem('cuentas-sync-code');
-  if(url && key && code) return {url: url.replace(/\/+$/,''), key, code};
-  return null;
+  return { url: SUPABASE_URL, key: SUPABASE_KEY, code: SUPABASE_CODE };
 }
 
 function setSyncStatus(msg){
@@ -1002,14 +990,7 @@ function clearSyncConfig(){
   renderSyncStatus();
 }
 function renderSyncStatus(){
-  const cfg = getSyncConfig();
-  document.getElementById('syncConfigStatus').textContent = cfg
-    ? `✅ Configurado. Código de sincronización: "${cfg.code}"`
-    : '⚠️ Sin configurar. Los datos solo se guardan en este dispositivo.';
-  if(cfg){
-    document.getElementById('syncUrlInput').placeholder = cfg.url;
-    document.getElementById('syncCodeInput').placeholder = cfg.code;
-  }
+  setSyncStatus('✅ Sincronización automática activa.');
 }
 async function syncNow(){
   if(!getSyncConfig()){ setSyncStatus(''); return; }
