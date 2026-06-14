@@ -1184,11 +1184,27 @@ function renderBalance(){
 
 function renderDashboard(){
   const t = calcTotals();
+  const aCobrar = t.ingresos - t.ingresoCobrado;
+  const aAbonar = t.fijos - (getMonth().fijos.reduce((s,f)=> s + (f.esConsumo ? (t.variables) : (Number(f.pagado)||0)), 0));
   document.getElementById('summaryGrid').innerHTML = `
-    <div class="summary-card"><div class="label">Cobrado</div><div class="val" style="color:var(--green)">${formatMoney(t.ingresoCobrado)}</div></div>
-    <div class="summary-card"><div class="label">Gastos fijos</div><div class="val">${formatMoney(t.fijos)}</div></div>
-    <div class="summary-card"><div class="label">Consumo</div><div class="val" style="font-size:0.95rem">${formatMoney(t.variables)}</div></div>
-    <div class="summary-card"><div class="label">Tarjetas</div><div class="val">${formatMoney(t.cuotas)}</div></div>
+    <div class="summary-card">
+      <div class="label">Ingresos totales</div>
+      <div class="val" style="color:var(--green)">${formatMoney(t.ingresos)}</div>
+      ${aCobrar > 0 ? `<div style="font-size:0.72rem;color:var(--gold);margin-top:3px">Falta cobrar ${formatMoney(aCobrar)}</div>` : `<div style="font-size:0.72rem;color:var(--green);margin-top:3px">Todo cobrado ✓</div>`}
+    </div>
+    <div class="summary-card">
+      <div class="label">Gastos fijos</div>
+      <div class="val">${formatMoney(t.fijos)}</div>
+      ${aAbonar > 0 ? `<div style="font-size:0.72rem;color:var(--red);margin-top:3px">A abonar ${formatMoney(aAbonar)}</div>` : `<div style="font-size:0.72rem;color:var(--green);margin-top:3px">Todo abonado ✓</div>`}
+    </div>
+    <div class="summary-card">
+      <div class="label">Consumo del mes</div>
+      <div class="val">${formatMoney(t.variables)}</div>
+    </div>
+    <div class="summary-card">
+      <div class="label">Tarjetas</div>
+      <div class="val">${formatMoney(t.cuotas)}</div>
+    </div>
   `;
 
   // donut
@@ -1421,8 +1437,15 @@ function renderFijos(){
               </label>
             </div>
           </td>
-          <td style="padding:9px 6px;white-space:nowrap;text-align:right;font-family:'JetBrains Mono',monospace;font-weight:700;font-size:0.95rem;vertical-align:top">
-            ${formatMoney(monto)}
+          <td style="padding:9px 6px;white-space:nowrap;text-align:right;vertical-align:top">
+            ${esConsumo
+              ? `<span style="font-family:'JetBrains Mono',monospace;font-size:0.95rem;font-weight:700;color:var(--ink-soft)">${formatMoney(monto)}</span>`
+              : `<input type="text" inputmode="numeric" value="${fmtInput(Number(f.monto)||0)}" placeholder="0"
+                  onfocus="onMontoFocus(this)"
+                  onblur="onMontoBlur(this); updateFijo('${f.id}','monto',parseInput(this.value))"
+                  onkeydown="if(event.key==='Enter'){onMontoBlur(this);updateFijo('${f.id}','monto',parseInput(this.value))}"
+                  style="font-family:'JetBrains Mono',monospace;font-size:0.95rem;font-weight:700;width:120px;text-align:right;color:var(--ink);padding:4px 6px;border:1px solid var(--line);border-radius:6px;background:#fff">`
+            }
           </td>
           <td style="padding:9px 6px;white-space:nowrap;text-align:right;vertical-align:top">
             ${esConsumo
